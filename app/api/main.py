@@ -47,6 +47,7 @@ class MixTrackSettings(BaseModel):
     low: float = Field(default=0.0, ge=-12.0, le=12.0)
     mid: float = Field(default=0.0, ge=-12.0, le=12.0)
     high: float = Field(default=0.0, ge=-12.0, le=12.0)
+    reverb: float = Field(default=0.0, ge=0.0, le=60.0)
 
 
 class HdMixRequest(BaseModel):
@@ -315,8 +316,11 @@ def _render_hd_mix(job_dir: Path, request: HdMixRequest) -> Path:
             f"equalizer=f=120:t=q:w=0.7:g={settings.low}",
             f"equalizer=f=1100:t=q:w=0.95:g={settings.mid}",
             f"equalizer=f=6200:t=q:w=0.7:g={settings.high}",
-            f"volume={settings.volume}",
         ]
+        if settings.reverb > 0:
+            decay = round(min(0.72, max(0.0, settings.reverb / 100)), 3)
+            filters.append(f"aecho=0.82:0.88:55|118:{decay}|{round(decay * 0.68, 3)}")
+        filters.append(f"volume={settings.volume}")
         chains.append(f"[{index}:a]{','.join(filters)}[{label}]")
 
     master_filters = [

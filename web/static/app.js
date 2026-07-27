@@ -35,13 +35,13 @@ const EQ_BANDS = [
 ];
 
 const MIX_PRESETS = {
-  main_vocal: { low: -1, mid: 2, high: 1 },
-  backing_vocal: { low: -2, mid: 1, high: 1 },
-  drums: { low: 2, mid: 0, high: 2 },
-  bass: { low: 3, mid: -2, high: 0 },
-  guitar: { low: -1, mid: 2, high: 2 },
-  keys: { low: -2, mid: 1, high: 3 },
-  other: { low: -1, mid: 0, high: 1 },
+  main_vocal: { low: -1, mid: 2, high: 1, reverb: 18 },
+  backing_vocal: { low: -2, mid: 1, high: 1, reverb: 24 },
+  drums: { low: 2, mid: 0, high: 2, reverb: 8 },
+  bass: { low: 3, mid: -2, high: 0, reverb: 0 },
+  guitar: { low: -1, mid: 2, high: 2, reverb: 12 },
+  keys: { low: -2, mid: 1, high: 3, reverb: 16 },
+  other: { low: -1, mid: 0, high: 1, reverb: 14 },
 };
 
 const KEY_OPTIONS = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
@@ -82,6 +82,7 @@ const state = {
   masterInput: null,
   masterCompressor: null,
   masterGain: null,
+  reverbImpulse: null,
   hdMaster: false,
   mixSettings: new Map(),
   playing: false,
@@ -360,6 +361,7 @@ function renderTracks(job) {
       row,
       sourceNode: null,
       eqNodes: null,
+      reverbNodes: null,
       gainNode: null,
     };
     ensureMixSettings(name);
@@ -570,6 +572,9 @@ function connectTrackGraph(track) {
   const low = state.audioContext.createBiquadFilter();
   const mid = state.audioContext.createBiquadFilter();
   const high = state.audioContext.createBiquadFilter();
+  const dryGain = state.audioContext.createGain();
+  const convolver = state.audioContext.createConvolver();
+  const wetGain = state.audioContext.createGain();
   const gain = state.audioContext.createGain();
 
   const filters = { low, mid, high };
@@ -582,9 +587,14 @@ function connectTrackGraph(track) {
   track.sourceNode.connect(low);
   low.connect(mid);
   mid.connect(high);
-  high.connect(gain);
+  high.connect(dryGain);
+  high.connect(convolver);
+  convolver.connect(wetGain);
+  dryGain.connect(gain);
+  wetGain.connect(gain);
   gain.connect(state.masterInput);
   track.eqNodes = filters;
+  track.reverbNodes = { dryGain, convolver, wetGain };
   track.gainNode = gain;
   applyEqToTrack(track);
 }
@@ -610,7 +620,7 @@ function rebuildMasterChain() {
 
 function ensureMixSettings(trackName) {
   if (!state.mixSettings.has(trackName)) {
-    state.mixSettings.set(trackName, { ...(MIX_PRESETS[trackName] || { low: 0, mid: 0, high: 0 }) });
+    state.mixSettings.set(trackName, { ...(MIX_PRESETS[trackName] || { low: 0, mid: 0, high: 0, reverb: 0 }) });
   }
   return state.mixSettings.get(trackName);
 }
@@ -622,29 +632,38 @@ function applyEqToAllTracks() {
 }
 
 function applyEqToTrack(track) {
-  if (!track.eqNodes) return;
   const settings = ensureMixSettings(track.name);
-  for (const band of EQ_BANDS) {
-    track.eqNodes[band.key].gain.value = Number(settings[band.key]) || 0;
+  if (track.eqNodes) {
+    for (const band of EQ_BANDS) {
+      track.eqNodes[band.key].gain.value = Number(settings[band.key]) || 0;
+    }
+  }
+  if (track.reverbNodes) {
+    track.reverbNodes.convolver.buffer = state.reverbImpulse || createReverbImpulse();
+    const wet = Math.max(0, Math.min(0.7, (Number(settings.reverb) || 0) / 100));
+    track.reverbNodes.wetGain.gain.value = wet;
+    track.reverbNodes.dryGain.gain.value = Math.max(0.45, 1 - wet * 0.55);
   }
 }
 
 function setEqValue(trackName, bandKey, value) {
   const settings = ensureMixSettings(trackName);
-  settings[bandKey] = Math.max(-12, Math.min(12, Number(value) || 0));
+  settings[bandKey] = bandKey === "reverb"
+    ? Math.max(0, Math.min(60, Number(value) || 0))
+    : Math.max(-12, Math.min(12, Number(value) || 0));
   const track = state.tracks.get(trackName);
   if (track) applyEqToTrack(track);
 }
 
 function resetEq(trackName) {
-  state.mixSettings.set(trackName, { low: 0, mid: 0, high: 0 });
+  state.mixSettings.set(trackName, { low: 0, mid: 0, high: 0, reverb: 0 });
   const track = state.tracks.get(trackName);
   if (track) applyEqToTrack(track);
   renderEditMix();
 }
 
 function applyPreset(trackName) {
-  state.mixSettings.set(trackName, { ...(MIX_PRESETS[trackName] || { low: 0, mid: 0, high: 0 }) });
+  state.mixSettings.set(trackName, { ...(MIX_PRESETS[trackName] || { low: 0, mid: 0, high: 0, reverb: 0 }) });
   const track = state.tracks.get(trackName);
   if (track) applyEqToTrack(track);
   renderEditMix();
@@ -701,6 +720,7 @@ function buildHdMixPayload() {
       low: eq.low,
       mid: eq.mid,
       high: eq.high,
+      reverb: eq.reverb,
     };
   }
   return {
@@ -737,6 +757,11 @@ function renderEditMix() {
             <strong>${formatDb(settings[band.key])}</strong>
           </label>
         `).join("")}
+        <label class="eq-control reverb-control">
+          <span>Verb</span>
+          <input type="range" min="0" max="60" step="1" value="${settings.reverb || 0}" data-track="${name}" data-band="reverb" />
+          <strong>${formatPercent(settings.reverb || 0)}</strong>
+        </label>
       </div>
       <div class="mix-actions">
         <button class="secondary-button preset-button" type="button" data-preset="${name}">Preset</button>
@@ -749,7 +774,10 @@ function renderEditMix() {
   els.editMixDeck.querySelectorAll("[data-track][data-band]").forEach((slider) => {
     slider.addEventListener("input", (event) => {
       setEqValue(event.target.dataset.track, event.target.dataset.band, event.target.value);
-      event.target.closest(".eq-control")?.querySelector("strong").replaceChildren(formatDb(event.target.value));
+      const valueText = event.target.dataset.band === "reverb"
+        ? formatPercent(event.target.value)
+        : formatDb(event.target.value);
+      event.target.closest(".eq-control")?.querySelector("strong").replaceChildren(valueText);
     });
   });
   els.editMixDeck.querySelectorAll("[data-preset]").forEach((button) => {
@@ -764,6 +792,26 @@ function formatDb(value) {
   const db = Number(value) || 0;
   if (db === 0) return "0 dB";
   return `${db > 0 ? "+" : ""}${db} dB`;
+}
+
+function formatPercent(value) {
+  return `${Math.round(Number(value) || 0)}%`;
+}
+
+function createReverbImpulse() {
+  if (state.reverbImpulse || !state.audioContext) return state.reverbImpulse;
+  const sampleRate = state.audioContext.sampleRate;
+  const length = Math.round(sampleRate * 1.6);
+  const impulse = state.audioContext.createBuffer(2, length, sampleRate);
+  for (let channel = 0; channel < impulse.numberOfChannels; channel += 1) {
+    const data = impulse.getChannelData(channel);
+    for (let index = 0; index < length; index += 1) {
+      const decay = Math.pow(1 - index / length, 2.4);
+      data[index] = (Math.random() * 2 - 1) * decay;
+    }
+  }
+  state.reverbImpulse = impulse;
+  return impulse;
 }
 
 function setPlaybackRate(rate) {
