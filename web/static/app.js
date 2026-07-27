@@ -99,6 +99,8 @@ const state = {
   splitTaskId: null,
   splitPollTimer: null,
   syncTimer: null,
+  shiftedMixUrl: null,
+  shiftedMixFilename: null,
 };
 
 const els = {
@@ -135,6 +137,8 @@ const els = {
   clearLoopButton: document.querySelector("#clearLoopButton"),
   loopStatus: document.querySelector("#loopStatus"),
   globalLoopStatus: document.querySelector("#globalLoopStatus"),
+  globalShiftedMixButton: document.querySelector("#globalShiftedMixButton"),
+  globalShiftedMixText: document.querySelector("#globalShiftedMixText"),
   practiceMuteList: document.querySelector("#practiceMuteList"),
   countInToggle: document.querySelector("#countInToggle"),
   metronomeToggle: document.querySelector("#metronomeToggle"),
@@ -186,6 +190,7 @@ function bindEvents() {
   els.targetKey.addEventListener("change", () => setTargetKey(els.targetKey.value));
   els.resetKeyButton.addEventListener("click", () => setTargetKey(state.detectedKey || "C"));
   els.renderShiftedButton.addEventListener("click", renderShiftedMix);
+  els.globalShiftedMixButton.addEventListener("click", openShiftedMix);
   els.hdMasterButton.addEventListener("click", toggleHdMaster);
   els.hdExportButton.addEventListener("click", renderHdMix);
   els.saveMixButton.addEventListener("click", saveMixSettings);
@@ -241,6 +246,9 @@ async function selectJob(jobId) {
   state.loopEnd = null;
   state.loopMode = "regular";
   state.practiceMuteTracks = new Set();
+  state.shiftedMixUrl = null;
+  state.shiftedMixFilename = null;
+  updateShiftedMixStatus("idle");
   renderTracks(state.job);
   await loadMixSettings();
   renderEditMix();
@@ -858,13 +866,15 @@ function serializeMixSettings() {
   };
 }
 
-async function renderHdMix() {
+async function renderHdMix(options = {}) {
   if (!state.job) return;
+  const isShiftedRender = Boolean(options.shifted);
   els.hdExportButton.disabled = true;
   els.hdExportButton.textContent = "Rendering...";
   const format = els.exportFormat.value;
   const preset = els.exportPreset.value;
   els.mixStatus.textContent = preset === "stems_zip" ? "Preparing stems ZIP..." : `Rendering ${format.toUpperCase()}...`;
+  if (isShiftedRender) updateShiftedMixStatus("rendering");
   try {
     const response = await fetch(`/api/jobs/${encodeURIComponent(state.job.job_id)}/exports/hd-mix`, {
       method: "POST",
@@ -872,13 +882,19 @@ async function renderHdMix() {
       body: JSON.stringify(buildHdMixPayload()),
     });
     if (!response.ok) {
-      els.mixStatus.textContent = await response.text();
-      return;
+      const errorText = await response.text();
+      els.mixStatus.textContent = errorText;
+      if (isShiftedRender) updateShiftedMixStatus("error", errorText);
+      return null;
     }
     const result = await response.json();
     els.mixStatus.innerHTML = `<a href="${escapeHtml(result.url)}" download>${escapeHtml(result.filename)}</a>`;
+    if (isShiftedRender) updateShiftedMixStatus("ready", result.filename, result.url);
+    return result;
   } catch {
     els.mixStatus.textContent = "HD render failed.";
+    if (isShiftedRender) updateShiftedMixStatus("error", "Shifted mix failed");
+    return null;
   } finally {
     els.hdExportButton.disabled = false;
     els.hdExportButton.textContent = "Render WAV";
@@ -911,13 +927,56 @@ function buildHdMixPayload() {
 
 async function renderShiftedMix() {
   if (!state.job) return;
+  if (transposeSemitones() === 0) {
+    updateShiftedMixStatus("error", "Choose a new key");
+    els.audioKeyStatus.textContent = "Choose a different key first, then render the shifted mix.";
+    return;
+  }
   const previousPreset = els.exportPreset.value;
   const previousFormat = els.exportFormat.value;
   els.exportPreset.value = "full";
   els.exportFormat.value = "wav";
-  await renderHdMix();
+  await renderHdMix({ shifted: true });
   els.exportPreset.value = previousPreset;
   els.exportFormat.value = previousFormat;
+}
+
+function updateShiftedMixStatus(status, filename = null, url = null) {
+  if (!els.globalShiftedMixButton || !els.globalShiftedMixText) return;
+  els.globalShiftedMixButton.classList.remove("rendering", "ready", "error");
+  if (status === "rendering") {
+    state.shiftedMixUrl = null;
+    state.shiftedMixFilename = null;
+    els.globalShiftedMixButton.disabled = true;
+    els.globalShiftedMixButton.classList.add("rendering");
+    els.globalShiftedMixText.textContent = "Rendering shifted mix";
+    return;
+  }
+  if (status === "ready") {
+    state.shiftedMixUrl = url;
+    state.shiftedMixFilename = filename;
+    els.globalShiftedMixButton.disabled = false;
+    els.globalShiftedMixButton.classList.add("ready");
+    els.globalShiftedMixText.textContent = filename || "Shifted mix ready";
+    return;
+  }
+  if (status === "error") {
+    state.shiftedMixUrl = null;
+    state.shiftedMixFilename = null;
+    els.globalShiftedMixButton.disabled = true;
+    els.globalShiftedMixButton.classList.add("error");
+    els.globalShiftedMixText.textContent = filename || "Shifted mix failed";
+    return;
+  }
+  state.shiftedMixUrl = null;
+  state.shiftedMixFilename = null;
+  els.globalShiftedMixButton.disabled = true;
+  els.globalShiftedMixText.textContent = "No shifted mix";
+}
+
+function openShiftedMix() {
+  if (!state.shiftedMixUrl) return;
+  window.open(state.shiftedMixUrl, "_blank", "noopener");
 }
 
 function renderEditMix() {

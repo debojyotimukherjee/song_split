@@ -271,7 +271,7 @@ p {
   top: 0;
   z-index: 2;
   display: grid;
-  grid-template-columns: 96px 48px auto minmax(180px, 1fr) 210px minmax(170px, auto) minmax(150px, auto);
+  grid-template-columns: 96px 48px auto minmax(180px, 1fr) 210px minmax(170px, auto) minmax(150px, auto) minmax(170px, auto);
   gap: 12px;
   align-items: center;
   min-height: 76px;
@@ -311,6 +311,63 @@ p {
   background: rgba(43, 214, 117, 0.14);
   color: #65f29a;
   box-shadow: 0 0 22px rgba(43, 214, 117, 0.18);
+}
+
+.shifted-mix-status {
+  justify-self: end;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  max-width: 240px;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 12px;
+  background: #100b0b;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.shifted-mix-status:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.shifted-mix-status.ready {
+  border-color: rgba(43, 214, 117, 0.42);
+  background: rgba(43, 214, 117, 0.14);
+  color: #65f29a;
+  box-shadow: 0 0 22px rgba(43, 214, 117, 0.18);
+}
+
+.shifted-mix-status.rendering {
+  border-color: rgba(255, 176, 0, 0.34);
+  background: rgba(255, 176, 0, 0.1);
+  color: var(--stage);
+}
+
+.shifted-mix-status.error {
+  border-color: rgba(255, 64, 89, 0.42);
+  background: rgba(255, 64, 89, 0.12);
+  color: #ff6a78;
+}
+
+.shifted-mix-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  font-size: 15px;
+  line-height: 1;
+}
+
+#globalShiftedMixText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .transport-button {
@@ -1056,7 +1113,8 @@ audio {
   .seek,
   .tempo-mode,
   .practice-toggles,
-  .global-loop-status {
+  .global-loop-status,
+  .shifted-mix-status {
     grid-column: 1 / -1;
   }
 
