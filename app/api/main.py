@@ -48,7 +48,8 @@ class MixTrackSettings(BaseModel):
     low: float = Field(default=0.0, ge=-12.0, le=12.0)
     mid: float = Field(default=0.0, ge=-12.0, le=12.0)
     high: float = Field(default=0.0, ge=-12.0, le=12.0)
-    reverb: float = Field(default=0.0, ge=0.0, le=60.0)
+    reverb: float = Field(default=50.0, ge=0.0, le=100.0)
+    compression: float = Field(default=50.0, ge=0.0, le=100.0)
 
 
 class HdMixRequest(BaseModel):
@@ -408,9 +409,14 @@ def _render_hd_mix(job_dir: Path, request: HdMixRequest) -> Path:
             f"equalizer=f=1100:t=q:w=0.95:g={settings.mid}",
             f"equalizer=f=6200:t=q:w=0.7:g={settings.high}",
         ]
-        if settings.reverb > 0:
-            decay = round(min(0.72, max(0.0, settings.reverb / 100)), 3)
+        if settings.reverb > 50:
+            decay = round(min(0.72, max(0.0, (settings.reverb - 50) / 50 * 0.72)), 3)
             filters.append(f"aecho=0.82:0.88:55|118:{decay}|{round(decay * 0.68, 3)}")
+        if settings.compression > 50:
+            amount = min(1.0, max(0.0, (settings.compression - 50) / 50))
+            threshold = round(0.18 - amount * 0.12, 3)
+            ratio = round(2 + amount * 6, 2)
+            filters.append(f"acompressor=threshold={threshold}:ratio={ratio}:attack=8:release=140:makeup=1")
         filters.append(f"volume={settings.volume}")
         if request.semitones:
             filters.extend(_pitch_shift_filters(request.semitones))

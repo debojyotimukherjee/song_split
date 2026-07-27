@@ -35,13 +35,13 @@ const EQ_BANDS = [
 ];
 
 const MIX_PRESETS = {
-  main_vocal: { low: -1, mid: 2, high: 1, reverb: 18 },
-  backing_vocal: { low: -2, mid: 1, high: 1, reverb: 24 },
-  drums: { low: 2, mid: 0, high: 2, reverb: 8 },
-  bass: { low: 3, mid: -2, high: 0, reverb: 0 },
-  guitar: { low: -1, mid: 2, high: 2, reverb: 12 },
-  keys: { low: -2, mid: 1, high: 3, reverb: 16 },
-  other: { low: -1, mid: 0, high: 1, reverb: 14 },
+  main_vocal: { low: -1, mid: 2, high: 1, reverb: 62, compression: 64 },
+  backing_vocal: { low: -2, mid: 1, high: 1, reverb: 66, compression: 58 },
+  drums: { low: 2, mid: 0, high: 2, reverb: 54, compression: 60 },
+  bass: { low: 3, mid: -2, high: 0, reverb: 50, compression: 56 },
+  guitar: { low: -1, mid: 2, high: 2, reverb: 58, compression: 54 },
+  keys: { low: -2, mid: 1, high: 3, reverb: 60, compression: 52 },
+  other: { low: -1, mid: 0, high: 1, reverb: 58, compression: 52 },
 };
 
 const KEY_OPTIONS = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
@@ -415,6 +415,7 @@ function renderTracks(job) {
       sourceNode: null,
       eqNodes: null,
       reverbNodes: null,
+      compressionNode: null,
       gainNode: null,
     };
     ensureMixSettings(name);
@@ -596,6 +597,15 @@ function applyTrackMix() {
   }
 }
 
+function toggleTrackMute(trackName) {
+  const track = state.tracks.get(trackName);
+  if (!track) return;
+  track.muted = !track.muted;
+  track.row.querySelector(".mute")?.classList.toggle("active", track.muted);
+  applyTrackMix();
+  renderEditMix();
+}
+
 async function ensureAudioGraph() {
   if (!state.audioContext) {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -637,6 +647,7 @@ function connectTrackGraph(track) {
   const dryGain = state.audioContext.createGain();
   const convolver = state.audioContext.createConvolver();
   const wetGain = state.audioContext.createGain();
+  const compressor = state.audioContext.createDynamicsCompressor();
   const gain = state.audioContext.createGain();
 
   const filters = { low, mid, high };
@@ -654,9 +665,11 @@ function connectTrackGraph(track) {
   convolver.connect(wetGain);
   dryGain.connect(gain);
   wetGain.connect(gain);
-  gain.connect(state.masterInput);
+  gain.connect(compressor);
+  compressor.connect(state.masterInput);
   track.eqNodes = filters;
   track.reverbNodes = { dryGain, convolver, wetGain };
+  track.compressionNode = compressor;
   track.gainNode = gain;
   applyEqToTrack(track);
 }
@@ -682,9 +695,13 @@ function rebuildMasterChain() {
 
 function ensureMixSettings(trackName) {
   if (!state.mixSettings.has(trackName)) {
-    state.mixSettings.set(trackName, { ...(MIX_PRESETS[trackName] || { low: 0, mid: 0, high: 0, reverb: 0 }) });
+    state.mixSettings.set(trackName, { ...(MIX_PRESETS[trackName] || neutralMixSettings()) });
   }
   return state.mixSettings.get(trackName);
+}
+
+function neutralMixSettings() {
+  return { low: 0, mid: 0, high: 0, reverb: 50, compression: 50 };
 }
 
 function applyEqToAllTracks() {
@@ -702,30 +719,38 @@ function applyEqToTrack(track) {
   }
   if (track.reverbNodes) {
     track.reverbNodes.convolver.buffer = state.reverbImpulse || createReverbImpulse();
-    const wet = Math.max(0, Math.min(0.7, (Number(settings.reverb) || 0) / 100));
+    const wet = Math.max(0, Math.min(0.7, ((Number(settings.reverb) || 50) - 50) / 50 * 0.7));
     track.reverbNodes.wetGain.gain.value = wet;
     track.reverbNodes.dryGain.gain.value = Math.max(0.45, 1 - wet * 0.55);
+  }
+  if (track.compressionNode) {
+    const amount = Math.max(0, Math.min(1, ((Number(settings.compression) || 50) - 50) / 50));
+    track.compressionNode.threshold.value = -8 - amount * 28;
+    track.compressionNode.knee.value = 24 - amount * 12;
+    track.compressionNode.ratio.value = 1 + amount * 7;
+    track.compressionNode.attack.value = 0.004 + amount * 0.006;
+    track.compressionNode.release.value = 0.22 - amount * 0.12;
   }
 }
 
 function setEqValue(trackName, bandKey, value) {
   const settings = ensureMixSettings(trackName);
-  settings[bandKey] = bandKey === "reverb"
-    ? Math.max(0, Math.min(60, Number(value) || 0))
+  settings[bandKey] = ["reverb", "compression"].includes(bandKey)
+    ? Math.max(0, Math.min(100, Number(value) || 50))
     : Math.max(-12, Math.min(12, Number(value) || 0));
   const track = state.tracks.get(trackName);
   if (track) applyEqToTrack(track);
 }
 
 function resetEq(trackName) {
-  state.mixSettings.set(trackName, { low: 0, mid: 0, high: 0, reverb: 0 });
+  state.mixSettings.set(trackName, neutralMixSettings());
   const track = state.tracks.get(trackName);
   if (track) applyEqToTrack(track);
   renderEditMix();
 }
 
 function applyPreset(trackName) {
-  state.mixSettings.set(trackName, { ...(MIX_PRESETS[trackName] || { low: 0, mid: 0, high: 0, reverb: 0 }) });
+  state.mixSettings.set(trackName, { ...(MIX_PRESETS[trackName] || neutralMixSettings()) });
   const track = state.tracks.get(trackName);
   if (track) applyEqToTrack(track);
   renderEditMix();
@@ -846,6 +871,7 @@ function buildHdMixPayload() {
       mid: eq.mid,
       high: eq.high,
       reverb: eq.reverb,
+      compression: eq.compression,
     };
   }
   return {
@@ -898,11 +924,17 @@ function renderEditMix() {
         `).join("")}
         <label class="eq-control reverb-control">
           <span>Verb</span>
-          <input type="range" min="0" max="60" step="1" value="${settings.reverb || 0}" data-track="${name}" data-band="reverb" />
-          <strong>${formatPercent(settings.reverb || 0)}</strong>
+          <input type="range" min="0" max="100" step="1" value="${settings.reverb ?? 50}" data-track="${name}" data-band="reverb" />
+          <strong>${formatPercent(settings.reverb ?? 50)}</strong>
+        </label>
+        <label class="eq-control compression-control">
+          <span>Comp</span>
+          <input type="range" min="0" max="100" step="1" value="${settings.compression ?? 50}" data-track="${name}" data-band="compression" />
+          <strong>${formatPercent(settings.compression ?? 50)}</strong>
         </label>
       </div>
       <div class="mix-actions">
+        <button class="track-button mix-mute-button ${track.muted ? "active" : ""}" type="button" data-mix-mute="${name}">M</button>
         <button class="secondary-button preset-button" type="button" data-preset="${name}">Preset</button>
         <button class="secondary-button reset-eq-button" type="button" data-reset="${name}">Flat</button>
       </div>
@@ -913,11 +945,14 @@ function renderEditMix() {
   els.editMixDeck.querySelectorAll("[data-track][data-band]").forEach((slider) => {
     slider.addEventListener("input", (event) => {
       setEqValue(event.target.dataset.track, event.target.dataset.band, event.target.value);
-      const valueText = event.target.dataset.band === "reverb"
+      const valueText = ["reverb", "compression"].includes(event.target.dataset.band)
         ? formatPercent(event.target.value)
         : formatDb(event.target.value);
       event.target.closest(".eq-control")?.querySelector("strong").replaceChildren(valueText);
     });
+  });
+  els.editMixDeck.querySelectorAll("[data-mix-mute]").forEach((button) => {
+    button.addEventListener("click", () => toggleTrackMute(button.dataset.mixMute));
   });
   els.editMixDeck.querySelectorAll("[data-preset]").forEach((button) => {
     button.addEventListener("click", () => applyPreset(button.dataset.preset));
@@ -983,10 +1018,15 @@ function renderSections() {
     button.type = "button";
     button.textContent = `${section.name} ${formatTime(section.start)}`;
     button.addEventListener("click", () => seekAll(Number(section.start) || 0));
-    button.addEventListener("dblclick", async () => {
+    const removeSection = async () => {
       state.sections = state.sections.filter((item) => item !== section);
       renderSections();
       await saveSections();
+    };
+    button.addEventListener("dblclick", removeSection);
+    button.addEventListener("contextmenu", async (event) => {
+      event.preventDefault();
+      await removeSection();
     });
     els.sectionList.append(button);
   }
