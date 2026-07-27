@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 
 FOCUS_STEMS_DIR = "stems_focus"
 REBUILD_STEMS_DIR = "stems_rebuild"
+
+
+@dataclass
+class StemBuildInfo:
+    name: str
+    path: Path
+    status: str
+    confidence: float
+    notes: str | None = None
 
 
 def run_ffmpeg_filter(source_file: Path, output_file: Path, audio_filter: str) -> None:

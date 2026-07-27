@@ -16,8 +16,6 @@ FRAME_SIZE = 8192
 HOP_SIZE = 2048
 PITCH_NAMES = ("C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B")
 ACCOMPANIMENT_STEMS = (
-    ("lead_guitar", 0.75),
-    ("rhythm_guitar", 0.95),
     ("guitar", 1.15),
     ("keys", 0.95),
     ("other", 0.42),
