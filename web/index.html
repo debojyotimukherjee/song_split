@@ -72,7 +72,7 @@
             <label><input id="countInToggle" type="checkbox" /> Count-in</label>
             <label><input id="metronomeToggle" type="checkbox" /> Click</label>
           </div>
-          <span id="globalLoopStatus" class="global-loop-status">Practice Zone off</span>
+          <span id="globalLoopStatus" class="global-loop-status">Loop off</span>
         </header>
 
         <nav class="view-tabs" aria-label="Mixer views">
@@ -159,10 +159,17 @@
                 <option value="mp3">MP3 320k</option>
               </select>
             </label>
-            <button id="setLoopStartButton" class="secondary-button" type="button">Start Zone</button>
-            <button id="setLoopEndButton" class="secondary-button" type="button">End Zone</button>
-            <button id="clearLoopButton" class="secondary-button" type="button">Clear Zone</button>
-            <span id="loopStatus" class="mix-status">Practice Zone off</span>
+            <label class="toolbar-field">
+              Range Mode
+              <select id="loopModeSelect" class="select compact">
+                <option value="regular">Regular Loop</option>
+                <option value="practice">Practice Zone</option>
+              </select>
+            </label>
+            <button id="setLoopStartButton" class="secondary-button" type="button">Start Range</button>
+            <button id="setLoopEndButton" class="secondary-button" type="button">End Range</button>
+            <button id="clearLoopButton" class="secondary-button" type="button">Clear Range</button>
+            <span id="loopStatus" class="mix-status">Loop off</span>
           </div>
           <div class="practice-zone-panel">
             <div>

@@ -87,6 +87,7 @@ const state = {
   mixSettings: new Map(),
   loopStart: null,
   loopEnd: null,
+  loopMode: "regular",
   practiceMuteTracks: new Set(),
   clickTimer: null,
   countInActive: false,
@@ -128,6 +129,7 @@ const els = {
   saveMixButton: document.querySelector("#saveMixButton"),
   exportPreset: document.querySelector("#exportPreset"),
   exportFormat: document.querySelector("#exportFormat"),
+  loopModeSelect: document.querySelector("#loopModeSelect"),
   setLoopStartButton: document.querySelector("#setLoopStartButton"),
   setLoopEndButton: document.querySelector("#setLoopEndButton"),
   clearLoopButton: document.querySelector("#clearLoopButton"),
@@ -187,6 +189,7 @@ function bindEvents() {
   els.hdMasterButton.addEventListener("click", toggleHdMaster);
   els.hdExportButton.addEventListener("click", renderHdMix);
   els.saveMixButton.addEventListener("click", saveMixSettings);
+  els.loopModeSelect.addEventListener("change", () => setLoopMode(els.loopModeSelect.value));
   els.setLoopStartButton.addEventListener("click", setLoopStart);
   els.setLoopEndButton.addEventListener("click", setLoopEnd);
   els.clearLoopButton.addEventListener("click", clearLoop);
@@ -236,6 +239,7 @@ async function selectJob(jobId) {
   `;
   state.loopStart = null;
   state.loopEnd = null;
+  state.loopMode = "regular";
   state.practiceMuteTracks = new Set();
   renderTracks(state.job);
   await loadMixSettings();
@@ -531,6 +535,10 @@ function startSyncLoop() {
     if (duration > 0) {
       els.seekBar.value = String(Math.round((master.currentTime / duration) * 1000));
     }
+    if (state.loopMode === "regular" && hasActiveRange() && master.currentTime >= state.loopEnd) {
+      seekAll(state.loopStart);
+      return;
+    }
     applyTrackMix();
     syncTracksToMaster(master.currentTime, 0.06);
   }, 180);
@@ -586,7 +594,7 @@ async function ensureTracksReady() {
 function applyTrackMix() {
   const hasSolo = [...state.tracks.values()].some((track) => track.solo);
   const masterTime = getMaster()?.currentTime || 0;
-  const inPracticeZone = isPracticeZoneActiveAt(masterTime);
+  const inPracticeZone = state.loopMode === "practice" && isPracticeZoneActiveAt(masterTime);
   for (const track of state.tracks.values()) {
     const practiceMuted = inPracticeZone && state.practiceMuteTracks.has(track.name);
     const audible = !(track.muted || practiceMuted || (hasSolo && !track.solo));
@@ -803,6 +811,8 @@ async function loadMixSettings() {
     const practiceZone = settings.practiceZone || {};
     state.loopStart = parseOptionalTime(practiceZone.start);
     state.loopEnd = parseOptionalTime(practiceZone.end);
+    state.loopMode = ["regular", "practice"].includes(practiceZone.mode) ? practiceZone.mode : "regular";
+    els.loopModeSelect.value = state.loopMode;
     state.practiceMuteTracks = new Set((practiceZone.muteTracks || []).filter((name) => TRACK_ORDER.includes(name)));
     applyEqToAllTracks();
     applyTrackMix();
@@ -839,6 +849,7 @@ function serializeMixSettings() {
     hdMaster: state.hdMaster,
     playbackRate: state.playbackRate,
     practiceZone: {
+      mode: state.loopMode,
       start: state.loopStart,
       end: state.loopEnd,
       muteTracks: [...state.practiceMuteTracks],
@@ -1044,13 +1055,17 @@ function clearLoop() {
   state.loopStart = null;
   state.loopEnd = null;
   updateLoopStatus();
+  applyTrackMix();
 }
 
 function updateLoopStatus() {
-  const running = state.loopStart !== null && state.loopEnd !== null;
+  const running = hasActiveRange();
+  const isPractice = state.loopMode === "practice";
+  const activeLabel = isPractice ? "Practice Zone Active" : "Loop Running";
+  const offLabel = isPractice ? "Practice Zone off" : "Loop off";
   const text = running
-    ? `Practice Zone Active ${formatTime(state.loopStart)} - ${formatTime(state.loopEnd)}`
-    : "Practice Zone off";
+    ? `${activeLabel} ${formatTime(state.loopStart)} - ${formatTime(state.loopEnd)}`
+    : offLabel;
   for (const node of [els.loopStatus, els.globalLoopStatus]) {
     if (!node) continue;
     node.classList.toggle("loop-running", running);
@@ -1059,15 +1074,26 @@ function updateLoopStatus() {
   updateLoopBarHighlights();
 }
 
+function setLoopMode(mode) {
+  state.loopMode = mode === "practice" ? "practice" : "regular";
+  els.loopModeSelect.value = state.loopMode;
+  updateLoopStatus();
+  applyTrackMix();
+  renderPracticeMuteControls();
+}
+
+function hasActiveRange() {
+  return state.loopStart !== null && state.loopEnd !== null;
+}
+
 function isPracticeZoneActiveAt(time) {
-  return state.loopStart !== null
-    && state.loopEnd !== null
+  return hasActiveRange()
     && time >= state.loopStart
     && time < state.loopEnd;
 }
 
 function updateLoopBarHighlights() {
-  const running = state.loopStart !== null && state.loopEnd !== null;
+  const running = hasActiveRange();
   const tempo = state.tempo || normalizeTempo(null);
   document.querySelectorAll("[data-bar-index]").forEach((node) => {
     const index = Number(node.dataset.barIndex);
