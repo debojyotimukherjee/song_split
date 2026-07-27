@@ -8,7 +8,7 @@ from typing import Callable
 
 from app.audio.instruments.bass import create_bass_stem
 from app.audio.instruments.drums import create_drums_stem
-from app.audio.instruments.guitar import create_guitar_focus_stem
+from app.audio.instruments.guitar import create_guitar_stems
 from app.audio.instruments.keys import create_keys_focus_stem, create_keys_rebuild_stem
 from app.audio.instruments.other import create_other_stem
 from app.audio.instruments.vocals import create_backing_vocal_estimate
@@ -20,7 +20,8 @@ TARGET_STEMS = [
     "backing_vocal",
     "drums",
     "bass",
-    "guitar",
+    "lead_guitar",
+    "rhythm_guitar",
     "keys",
     "other",
 ]
@@ -28,7 +29,6 @@ TARGET_STEMS = [
 DEMUX_SOURCE_STEMS = ("vocals", "drums", "bass", "guitar", "piano", "other")
 DIRECT_DEMUX_TO_TARGET = {
     "vocals": "main_vocal",
-    "guitar": "guitar",
     "piano": "keys",
 }
 
@@ -195,6 +195,32 @@ def map_demucs_output(model_output_dir: Path, job_dir: Path) -> list[StemManifes
         )
         mapped_targets.add("bass")
 
+    if create_guitar_stems(job_dir):
+        for name, confidence, notes in (
+            (
+                "lead_guitar",
+                0.62,
+                "Estimated from Demucs guitar with a lead-focused filter; no keys or piano are blended in.",
+            ),
+            (
+                "rhythm_guitar",
+                0.62,
+                "Estimated from Demucs guitar with a rhythm-focused filter; no keys or piano are blended in.",
+            ),
+        ):
+            target_file = stems_dir / f"{name}.wav"
+            manifests.append(
+                StemManifest(
+                    name=name,
+                    path=str(target_file),
+                    status="estimated",
+                    source_stem="guitar",
+                    confidence=confidence,
+                    notes=notes,
+                )
+            )
+            mapped_targets.add(name)
+
     other_file = raw_stems_dir / "other.wav"
     if other_file.exists():
         target_file = stems_dir / "other.wav"
@@ -210,7 +236,6 @@ def map_demucs_output(model_output_dir: Path, job_dir: Path) -> list[StemManifes
         )
         mapped_targets.add("other")
 
-    create_guitar_focus_stem(job_dir)
     create_keys_focus_stem(job_dir)
     create_keys_rebuild_stem(job_dir)
 

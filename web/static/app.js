@@ -3,7 +3,8 @@ const TRACK_ORDER = [
   "backing_vocal",
   "drums",
   "bass",
-  "guitar",
+  "lead_guitar",
+  "rhythm_guitar",
   "keys",
   "other",
 ];
@@ -13,7 +14,8 @@ const TRACK_LABELS = {
   backing_vocal: "Backing Vocal",
   drums: "Drums",
   bass: "Bass",
-  guitar: "Guitar",
+  lead_guitar: "Lead Guitar",
+  rhythm_guitar: "Rhythm Guitar",
   keys: "Keys",
   other: "Other",
 };
@@ -23,7 +25,8 @@ const TRACK_INSTRUMENTS = {
   backing_vocal: "🎤",
   drums: "🥁",
   bass: "🎸",
-  guitar: "🎸",
+  lead_guitar: "🎸",
+  rhythm_guitar: "🎸",
   keys: "🎹",
   other: "🎷",
 };
@@ -364,8 +367,8 @@ function audioUrl(jobId, trackName) {
   if (trackName === "bass" && els.bassMode.value === "raw") {
     return `/api/jobs/${encodeURIComponent(jobId)}/audio/stems_raw/bass.wav`;
   }
-  if (trackName === "guitar" && els.guitarMode.value === "focus") {
-    return `/api/jobs/${encodeURIComponent(jobId)}/audio/stems_focus/guitar.wav`;
+  if ((trackName === "lead_guitar" || trackName === "rhythm_guitar") && els.guitarMode.value === "focus") {
+    return `/api/jobs/${encodeURIComponent(jobId)}/audio/stems_focus/${trackName}.wav`;
   }
   if (trackName === "keys" && els.keysMode.value === "focus") {
     return `/api/jobs/${encodeURIComponent(jobId)}/audio/stems_focus/keys.wav`;
@@ -378,7 +381,7 @@ function audioUrl(jobId, trackName) {
 
 function modeLabel(trackName) {
   if (trackName === "bass") return ` - ${els.bassMode.value}`;
-  if (trackName === "guitar") return ` - ${els.guitarMode.value}`;
+  if (trackName === "lead_guitar" || trackName === "rhythm_guitar") return ` - ${els.guitarMode.value}`;
   if (trackName === "keys") return ` - ${els.keysMode.value}`;
   return "";
 }
@@ -889,7 +892,8 @@ function colorForTrack(name) {
     backing_vocal: "#ff7888",
     drums: "#e00024",
     bass: "#ffb000",
-    guitar: "#ff5a1f",
+    lead_guitar: "#ff5a1f",
+    rhythm_guitar: "#ff8750",
     keys: "#c81dff",
     other: "#ffcf5a",
   };
