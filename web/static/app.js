@@ -1413,7 +1413,7 @@ async function uploadSelectedFile(engine) {
 async function deleteSelectedSong() {
   if (!state.job) return;
   const songName = state.job.input?.filename || state.job.job_id;
-  if (!window.confirm(`Remove "${songName}" from Weekend Stems?`)) return;
+  if (!window.confirm(`Remove "${songName}" from Wannabe Stem?`)) return;
 
   pauseAll();
   els.deleteSongButton.disabled = true;

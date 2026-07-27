@@ -20,7 +20,7 @@ from app.core.config import Settings
 from app.core.manifests import read_manifest, utc_now, write_manifest
 from app.core.paths import make_job_id
 
-app = FastAPI(title="Weekend Stems API")
+app = FastAPI(title="Wannabe Stem API")
 
 
 TaskState = Literal["queued", "running", "done", "failed", "cancelled"]

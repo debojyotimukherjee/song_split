@@ -1,6 +1,6 @@
 # Project Skills
 
-This file defines the working skills the Weekend Stems agent should use while building the local stem separation and rehearsal system. It is a project-level operating guide, not a packaged Codex skill.
+This file defines the working skills the Wannabe Stem agent should use while building the local stem separation and rehearsal system. It is a project-level operating guide, not a packaged Codex skill.
 
 ## 1. Docker-First Local App
 
@@ -59,7 +59,7 @@ Done when:
 
 ## 4. Stem Mapping
 
-Use when translating model-native stems into user-facing Weekend Stems tracks.
+Use when translating model-native stems into user-facing Wannabe Stem tracks.
 
 Responsibilities:
 
@@ -139,7 +139,7 @@ Use when changing the browser interface.
 
 Responsibilities:
 
-- Keep the red/black Weekend Stems visual theme.
+- Keep the red/black Wannabe Stem visual theme.
 - Prefer instrument icons and compact controls over explanatory text.
 - Show synchronized stem lanes with waveform previews.
 - Support play/pause/stop/seek, mute, solo, volume, and tempo.

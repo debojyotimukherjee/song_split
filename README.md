@@ -1,17 +1,38 @@
-# Weekend Stems
+# Wannabe Stem
 
-Weekend Stems is a local rehearsal app for Wannabe Weekenders. Drop in a song, split it into playable stems, slow it down, follow chords by bar, transpose the chart, loop hard sections, and build practice mixes without uploading your music anywhere.
+Wannabe Stem is a local rehearsal app for Wannabe Weekenders. Drop in a song, split it into playable stems, slow it down, follow chords by bar, transpose the chart, loop hard sections, and build practice mixes without uploading your music anywhere.
 
 ## Docker Installation
 
-Weekend Stems runs with Docker so bandmates do not need to install Python, FFmpeg, Demucs, or any music-analysis libraries directly.
+Wannabe Stem runs with Docker so bandmates do not need to install Python, FFmpeg, Demucs, or any music-analysis libraries directly.
+
+## Downloadable Bandmate Package
+
+For non-technical bandmates, create a zip and upload that zip to Google Drive:
+
+```bash
+./scripts/make_release_package.sh
+```
+
+The script writes a file like:
+
+```text
+dist/Wannabe-Stem-20260727-1800.zip
+```
+
+Upload that zip to Google Drive. Bandmates should download it, unzip it, and double-click:
+
+- Mac: **Start Wannabe Stem.command**
+- Windows: **Start Wannabe Stem Windows.cmd**
+
+They still need Docker Desktop installed and running first. The zip includes `BANDMATE_INSTALL.md` with simple Mac and Windows instructions.
 
 ### Mac
 
 1. Install Docker Desktop for Mac from https://www.docker.com/products/docker-desktop/.
 2. Open Docker Desktop once and leave it running.
 3. Open Terminal.
-4. Go to the Weekend Stems folder:
+4. Go to the Wannabe Stem folder:
 
 ```bash
 cd /Users/debo/Documents/song_split
@@ -37,7 +58,7 @@ INSTALL_DEMUCS=true docker compose up api
 2. During install, allow Docker to use WSL 2 if it asks.
 3. Open Docker Desktop once and leave it running.
 4. Open PowerShell.
-5. Go to the Weekend Stems folder. Example:
+5. Go to the Wannabe Stem folder. Example:
 
 ```powershell
 cd C:\Users\YourName\Documents\song_split
@@ -65,7 +86,7 @@ Press `Ctrl+C` in the terminal running Docker, or run:
 docker compose down
 ```
 
-## What Weekend Stems Creates
+## What Wannabe Stem Creates
 
 Upload an MP3, WAV, FLAC, or M4A and click **Split Tracks**. The app creates:
 
@@ -124,7 +145,7 @@ data/
 └── models/     cached separation models
 ```
 
-Nothing is uploaded to a cloud service by Weekend Stems.
+Nothing is uploaded to a cloud service by Wannabe Stem.
 
 ## Command Line Tools
 

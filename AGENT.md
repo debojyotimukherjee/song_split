@@ -1,14 +1,14 @@
-# Weekend Stems Agent
+# Wannabe Stem Agent
 
 ## Mission
 
-Build Weekend Stems: a local-first music practice system for Wannabe Weekenders. A non-technical bandmate should be able to run it with Docker, open a browser, upload a song, split it into useful tracks, and practice with chords, loops, tempo, key, and mix controls.
+Build Wannabe Stem: a local-first music practice system for Wannabe Weekenders. A non-technical bandmate should be able to run it with Docker, open a browser, upload a song, split it into useful tracks, and practice with chords, loops, tempo, key, and mix controls.
 
 The product is Moises-like in spirit, but intentionally local and band-rehearsal focused. Nothing should require uploading a song to a cloud service.
 
 ## Current Product Direction
 
-Weekend Stems should prioritize dependable, musician-useful tracks over speculative over-separation. Earlier experiments with Guitar 1/Guitar 2 and Keys 1/Keys 2 caused bleed and mushy results, so the current user-facing track list is:
+Wannabe Stem should prioritize dependable, musician-useful tracks over speculative over-separation. Earlier experiments with Guitar 1/Guitar 2 and Keys 1/Keys 2 caused bleed and mushy results, so the current user-facing track list is:
 
 - Main Vocal
 - Backing Vocal
@@ -41,7 +41,7 @@ Pipeline:
 1. Ingest: accept MP3/WAV/FLAC/M4A from browser upload.
 2. Normalize: convert to stable internal WAV and capture metadata.
 3. Separate: run local separation engine when built with `INSTALL_DEMUCS=true`.
-4. Remap: convert raw model outputs into Weekend Stems tracks.
+4. Remap: convert raw model outputs into Wannabe Stem tracks.
 5. Post-process: run instrument-specific cleanup/rebuild modules.
 6. Analyze: detect chords, bars, tempo, and estimated key.
 7. Review: browser mixer with synchronized playback.
@@ -49,7 +49,7 @@ Pipeline:
 
 ## UI Direction
 
-The UI should feel like a rehearsal tool, not a marketing page. Keep the red/black Weekend Stems theme, icon-forward instrument controls, and the four main views:
+The UI should feel like a rehearsal tool, not a marketing page. Keep the red/black Wannabe Stem theme, icon-forward instrument controls, and the four main views:
 
 - Track View: synchronized waveform rows with mute, solo, and volume.
 - Chord View: bar-based chord chart, four bars per row, current bar tracking playback.
