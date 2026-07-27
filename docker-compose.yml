@@ -1,0 +1,27 @@
+services:
+  api:
+    build:
+      context: .
+      args:
+        INSTALL_DEMUCS: ${INSTALL_DEMUCS:-false}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/workspace/data
+    environment:
+      SONG_SPLIT_DATA_DIR: /workspace/data
+      SONG_SPLIT_MODEL_NAME: htdemucs_6s
+      TORCH_HOME: /workspace/data/models/torch
+
+  worker:
+    build:
+      context: .
+      args:
+        INSTALL_DEMUCS: ${INSTALL_DEMUCS:-false}
+    volumes:
+      - ./data:/workspace/data
+    environment:
+      SONG_SPLIT_DATA_DIR: /workspace/data
+      SONG_SPLIT_MODEL_NAME: htdemucs_6s
+      TORCH_HOME: /workspace/data/models/torch
+    entrypoint: ["python", "-m", "app.cli"]

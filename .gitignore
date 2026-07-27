@@ -1,0 +1,11 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/jobs/
+data/inbox/
+data/models/
+data/exports/
+.DS_Store
+**/.DS_Store

@@ -1,0 +1,65 @@
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+from app.audio.pipeline import process_file, remap_existing_job
+from app.audio.chords import analyze_job_chords
+from app.core.config import Settings
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="weekend-stems")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    separate = subparsers.add_parser("separate", help="Create a job from an audio file.")
+    separate.add_argument("input_file", help="Path to an MP3/WAV/FLAC/M4A file.")
+    separate.add_argument(
+        "--engine",
+        choices=["none", "demucs"],
+        default="none",
+        help="Separation engine to run after normalization.",
+    )
+    separate.add_argument(
+        "--job-id",
+        help="Optional deterministic job id. Defaults to a slug plus timestamp.",
+    )
+
+    remap = subparsers.add_parser(
+        "remap",
+        help="Rebuild product stems from an existing Demucs job output.",
+    )
+    remap.add_argument("job_dir", help="Path to an existing job folder.")
+
+    chords = subparsers.add_parser(
+        "analyze-chords",
+        help="Detect timestamped chords for an existing job.",
+    )
+    chords.add_argument("job_dir", help="Path to an existing job folder.")
+
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
+    settings = Settings.from_env()
+
+    if args.command == "separate":
+        manifest = process_file(
+            input_file=Path(args.input_file),
+            settings=settings,
+            engine=args.engine,
+            requested_job_id=args.job_id,
+        )
+        print(json.dumps(manifest.model_dump(mode="json"), indent=2))
+    elif args.command == "remap":
+        manifest = remap_existing_job(Path(args.job_dir), settings=settings)
+        print(json.dumps(manifest.model_dump(mode="json"), indent=2))
+    elif args.command == "analyze-chords":
+        result = analyze_job_chords(Path(args.job_dir))
+        print(json.dumps(result, indent=2))
+
+
+if __name__ == "__main__":
+    main()

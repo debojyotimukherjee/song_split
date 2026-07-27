@@ -1,0 +1,278 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+import shutil
+from threading import Event, Lock, Thread
+from typing import Literal
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+from app.audio.chords import analyze_job_chords, read_chord_analysis
+from app.audio.pipeline import process_file
+from app.audio.separate import SplitCancelled
+from app.core.config import Settings
+from app.core.manifests import read_manifest, utc_now, write_manifest
+from app.core.paths import make_job_id
+
+app = FastAPI(title="Weekend Stems API")
+
+
+TaskState = Literal["queued", "running", "done", "failed", "cancelled"]
+
+
+@dataclass
+class SplitTask:
+    task_id: str
+    filename: str
+    job_id: str | None = None
+    state: TaskState = "queued"
+    progress: int = 0
+    message: str = "Queued"
+    error: str | None = None
+    cancel_event: Event = field(default_factory=Event)
+
+
+split_tasks: dict[str, SplitTask] = {}
+split_tasks_lock = Lock()
+
+WEB_DIR = Path("web")
+if WEB_DIR.exists():
+    app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/")
+def index() -> FileResponse:
+    index_path = WEB_DIR / "index.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="UI has not been built yet.")
+    return FileResponse(index_path)
+
+
+@app.get("/api/jobs")
+def list_jobs() -> list[dict]:
+    settings = Settings.from_env()
+    if not settings.jobs_dir.exists():
+        return []
+
+    jobs = []
+    for manifest_path in sorted(settings.jobs_dir.glob("*/manifest.json"), reverse=True):
+        try:
+            manifest = read_manifest(manifest_path.parent)
+        except Exception:
+            continue
+        jobs.append(
+            {
+                "job_id": manifest.job_id,
+                "filename": manifest.input.filename,
+                "status": manifest.status,
+                "updated_at": manifest.updated_at,
+                "stems": [stem.model_dump(mode="json") for stem in manifest.stems],
+            }
+        )
+    return jobs
+
+
+@app.post("/api/splits")
+def start_split(file: UploadFile = File(...)) -> dict:
+    settings = Settings.from_env()
+    settings.inbox_dir.mkdir(parents=True, exist_ok=True)
+    upload_path = settings.inbox_dir / Path(file.filename or "upload.mp3").name
+
+    with upload_path.open("wb") as handle:
+        handle.write(file.file.read())
+
+    job_id = make_job_id(upload_path)
+    task = SplitTask(
+        task_id=job_id,
+        filename=Path(file.filename or upload_path.name).name,
+        job_id=job_id,
+    )
+    with split_tasks_lock:
+        split_tasks[task.task_id] = task
+
+    thread = Thread(target=_run_split_task, args=(task.task_id, upload_path, settings), daemon=True)
+    thread.start()
+    return _task_payload(task)
+
+
+@app.get("/api/splits/{task_id}")
+def get_split_status(task_id: str) -> dict:
+    task = _get_split_task(task_id)
+    return _task_payload(task)
+
+
+@app.post("/api/splits/{task_id}/cancel")
+def cancel_split(task_id: str) -> dict:
+    task = _get_split_task(task_id)
+    if task.state in {"done", "failed", "cancelled"}:
+        return _task_payload(task)
+    task.cancel_event.set()
+    task.state = "cancelled"
+    task.message = "Cancelling split..."
+    task.progress = min(task.progress, 95)
+    return _task_payload(task)
+
+
+@app.get("/api/jobs/{job_id}")
+def get_job(job_id: str) -> dict:
+    settings = Settings.from_env()
+    manifest = _load_job_manifest(settings, job_id)
+    return manifest.model_dump(mode="json")
+
+
+@app.delete("/api/jobs/{job_id}")
+def delete_job(job_id: str) -> dict:
+    settings = Settings.from_env()
+    job_dir = _resolve_job_dir(settings, job_id)
+    shutil.rmtree(job_dir)
+    return {"deleted": True, "job_id": job_id}
+
+
+@app.get("/api/jobs/{job_id}/chords")
+def get_job_chords(job_id: str) -> dict:
+    settings = Settings.from_env()
+    job_dir = _resolve_job_dir(settings, job_id)
+    try:
+        return read_chord_analysis(job_dir)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Chord analysis not found.") from None
+
+
+@app.post("/api/jobs/{job_id}/chords")
+def create_job_chords(job_id: str) -> dict:
+    settings = Settings.from_env()
+    job_dir = _resolve_job_dir(settings, job_id)
+    try:
+        return analyze_job_chords(job_dir)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/jobs/{job_id}/audio/{collection}/{filename}")
+def get_job_audio(job_id: str, collection: str, filename: str) -> FileResponse:
+    if collection not in {"stems", "stems_raw", "stems_focus", "stems_rebuild"}:
+        raise HTTPException(status_code=404, detail="Unknown audio collection.")
+    if "/" in filename or not filename.endswith(".wav"):
+        raise HTTPException(status_code=400, detail="Invalid audio filename.")
+
+    settings = Settings.from_env()
+    job_dir = _resolve_job_dir(settings, job_id)
+    audio_path = job_dir / collection / filename
+    if collection in {"stems_focus", "stems_rebuild"} and not audio_path.exists():
+        audio_path = job_dir / "stems" / filename
+    if not audio_path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found.")
+    return FileResponse(audio_path, media_type="audio/wav")
+
+
+@app.post("/jobs")
+def create_job(file: UploadFile = File(...), engine: str = "none") -> dict:
+    settings = Settings.from_env()
+    settings.inbox_dir.mkdir(parents=True, exist_ok=True)
+    upload_path = settings.inbox_dir / Path(file.filename or "upload.mp3").name
+
+    with upload_path.open("wb") as handle:
+        handle.write(file.file.read())
+
+    try:
+        manifest = process_file(upload_path, settings=settings, engine=engine)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return manifest.model_dump(mode="json")
+
+
+def _run_split_task(task_id: str, upload_path: Path, settings: Settings) -> None:
+    task = _get_split_task(task_id)
+
+    def progress(percent: int, message: str) -> None:
+        task.progress = max(task.progress, min(percent, 98))
+        task.message = message
+
+    try:
+        task.state = "running"
+        task.progress = 5
+        task.message = "Preparing song..."
+        manifest = process_file(
+            upload_path,
+            settings=settings,
+            engine="demucs",
+            requested_job_id=task.job_id,
+            progress_callback=progress,
+            cancel_event=task.cancel_event,
+        )
+        if task.cancel_event.is_set():
+            raise SplitCancelled("Split was cancelled.")
+        task.progress = 88
+        task.message = "Detecting chords and tempo..."
+        analyze_job_chords(settings.jobs_dir / manifest.job_id)
+        task.state = "done"
+        task.progress = 100
+        task.message = "Split complete."
+        task.job_id = manifest.job_id
+    except SplitCancelled as exc:
+        task.state = "cancelled"
+        task.message = "Split cancelled."
+        task.error = str(exc)
+        _mark_manifest_status(settings, task.job_id, "cancelled", str(exc))
+    except Exception as exc:
+        task.state = "failed"
+        task.message = "Split failed."
+        task.error = str(exc)
+        _mark_manifest_status(settings, task.job_id, "failed", str(exc))
+
+
+def _mark_manifest_status(settings: Settings, job_id: str | None, status: str, warning: str) -> None:
+    if not job_id:
+        return
+    job_dir = settings.jobs_dir / job_id
+    try:
+        manifest = read_manifest(job_dir)
+    except Exception:
+        return
+    manifest.status = status
+    manifest.updated_at = utc_now()
+    manifest.warnings.append(warning)
+    write_manifest(job_dir, manifest)
+
+
+def _get_split_task(task_id: str) -> SplitTask:
+    with split_tasks_lock:
+        task = split_tasks.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Split task not found.")
+    return task
+
+
+def _task_payload(task: SplitTask) -> dict:
+    return {
+        "task_id": task.task_id,
+        "job_id": task.job_id,
+        "filename": task.filename,
+        "state": task.state,
+        "progress": task.progress,
+        "message": task.message,
+        "error": task.error,
+    }
+
+
+def _resolve_job_dir(settings: Settings, job_id: str) -> Path:
+    jobs_root = settings.jobs_dir.resolve()
+    job_dir = (settings.jobs_dir / job_id).resolve()
+    if jobs_root not in job_dir.parents:
+        raise HTTPException(status_code=400, detail="Invalid job id.")
+    if not job_dir.exists():
+        raise HTTPException(status_code=404, detail="Job not found.")
+    return job_dir
+
+
+def _load_job_manifest(settings: Settings, job_id: str):
+    return read_manifest(_resolve_job_dir(settings, job_id))

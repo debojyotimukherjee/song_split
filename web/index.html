@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Weekend Stems</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260727-keys-rebuild" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">WS</div>
+          <div>
+            <h1>Weekend Stems</h1>
+            <p>Wannabe Weekenders rehearsal lab</p>
+          </div>
+        </div>
+
+        <div class="instrument-cloud" aria-label="Supported instruments">
+          <span class="instrument-icon" aria-label="Sax" title="Sax">🎷</span>
+          <span class="instrument-icon" aria-label="Piano" title="Piano">🎹</span>
+          <span class="instrument-icon" aria-label="Guitar" title="Guitar">🎸</span>
+          <span class="instrument-icon" aria-label="Bass" title="Bass">🎸</span>
+          <span class="instrument-icon" aria-label="Drums" title="Drums">🥁</span>
+          <span class="instrument-icon" aria-label="Accordion" title="Accordion">🪗</span>
+        </div>
+
+        <label class="field-label" for="jobSelect">Songs</label>
+        <select id="jobSelect" class="select"></select>
+        <button id="deleteSongButton" class="danger-button song-delete-button" type="button">Remove Song</button>
+
+        <div class="job-meta" id="jobMeta">Loading songs...</div>
+
+        <section class="drop-panel" aria-label="Upload song">
+          <input id="fileInput" type="file" accept="audio/*" />
+          <div>
+            <strong>Drop an MP3 later</strong>
+            <span>Upload support is wired, but separation can take a while.</span>
+          </div>
+          <div class="upload-actions">
+            <button id="uploadButton" class="secondary-button" type="button">Upload only</button>
+            <button id="splitButton" class="primary-button" type="button">Split Tracks</button>
+          </div>
+          <div id="splitProgressPanel" class="split-progress-panel" hidden>
+            <div class="split-progress-copy">
+              <span id="splitProgressMessage">Preparing song...</span>
+              <strong id="splitProgressValue">0%</strong>
+            </div>
+            <progress id="splitProgressBar" class="split-progress-bar" max="100" value="0"></progress>
+            <button id="cancelSplitButton" class="secondary-button" type="button">Cancel Split</button>
+          </div>
+        </section>
+      </aside>
+
+      <section class="mixer">
+        <header class="transport">
+          <button id="playButton" class="transport-button" type="button" aria-label="Play or pause">Play</button>
+          <button id="stopButton" class="icon-button" type="button" aria-label="Stop">Stop</button>
+          <div class="time-readout">
+            <span id="currentTime">0:00</span>
+            <span>/</span>
+            <span id="duration">0:00</span>
+          </div>
+          <input id="seekBar" class="seek" type="range" min="0" max="1000" value="0" aria-label="Seek" />
+          <label class="bass-mode">
+            Bass
+            <select id="bassMode" class="select compact">
+              <option value="clean">Clean</option>
+              <option value="raw">Raw</option>
+            </select>
+          </label>
+          <label class="guitar-mode">
+            Guitar
+            <select id="guitarMode" class="select compact">
+              <option value="direct">Direct</option>
+              <option value="focus">Focus</option>
+            </select>
+          </label>
+          <label class="keys-mode">
+            Keys
+            <select id="keysMode" class="select compact">
+              <option value="direct">Direct</option>
+              <option value="focus">Focus</option>
+              <option value="rebuild">Rebuild</option>
+            </select>
+          </label>
+          <label class="tempo-mode">
+            Tempo
+            <input id="tempoSlider" class="tempo-slider" type="range" min="50" max="125" step="1" value="100" />
+            <span id="tempoValue">100%</span>
+          </label>
+        </header>
+
+        <nav class="view-tabs" aria-label="Mixer views">
+          <button id="trackTab" class="view-tab active" type="button" data-view="track">Track View</button>
+          <button id="chordTab" class="view-tab" type="button" data-view="chord">Chord View</button>
+          <button id="keyTab" class="view-tab" type="button" data-view="key">Song Key</button>
+        </nav>
+
+        <section id="trackView" class="view-panel active" aria-label="Track view">
+          <section class="chord-lane" aria-label="Chord timeline">
+            <div class="chord-label">Chords</div>
+            <div id="chordTimeline" class="chord-timeline">No chord analysis yet</div>
+          </section>
+
+          <div id="tracks" class="tracks" aria-live="polite"></div>
+        </section>
+
+        <section id="chordView" class="view-panel chord-view" aria-label="Chord view">
+          <div class="chord-stage">
+            <div>
+              <span class="stage-label">Now Playing</span>
+              <strong id="currentChord">--</strong>
+            </div>
+            <div class="stage-time">
+              <span id="chordViewBar">Bar 1</span>
+              <span id="chordViewTempo">-- BPM</span>
+            </div>
+          </div>
+
+          <div id="fullChordTimeline" class="full-chord-timeline">No chord analysis yet</div>
+          <div id="chordList" class="chord-list" aria-label="Chord sections"></div>
+        </section>
+
+        <section id="keyView" class="view-panel key-view" aria-label="Song key view">
+          <div class="key-console">
+            <div>
+              <span class="stage-label">Estimated Song Key</span>
+              <strong id="detectedKey">--</strong>
+            </div>
+            <label class="key-picker" for="targetKey">
+              Change Chart To
+              <select id="targetKey" class="select"></select>
+            </label>
+          </div>
+
+          <div class="key-summary">
+            <span id="transposeSummary">No transposition</span>
+            <button id="resetKeyButton" class="secondary-button" type="button">Reset to original key</button>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="/static/app.js?v=20260727-keys-rebuild"></script>
+  </body>
+</html>
