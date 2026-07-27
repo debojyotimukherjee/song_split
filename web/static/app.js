@@ -336,6 +336,7 @@ function renderBarChart(duration) {
     });
     els.chordList.append(item);
   }
+  updateLoopBarHighlights();
 }
 
 async function editChordSegment(index) {
@@ -1063,6 +1064,19 @@ function updateLoopStatus() {
     node.classList.toggle("loop-running", running);
     node.textContent = text;
   }
+  updateLoopBarHighlights();
+}
+
+function updateLoopBarHighlights() {
+  const running = state.loopStart !== null && state.loopEnd !== null;
+  const tempo = state.tempo || normalizeTempo(null);
+  document.querySelectorAll("[data-bar-index]").forEach((node) => {
+    const index = Number(node.dataset.barIndex);
+    const barStart = index * tempo.secondsPerBar;
+    const barEnd = barStart + tempo.secondsPerBar;
+    const inLoop = running && barEnd > state.loopStart && barStart < state.loopEnd;
+    node.classList.toggle("loop-range", inLoop);
+  });
 }
 
 async function playCountIn() {
@@ -1081,7 +1095,13 @@ function startOrStopClick() {
   if (!els.metronomeToggle.checked || !state.playing) return;
   const interval = (60 / (state.tempo?.bpm || 120)) * 1000 / state.playbackRate;
   playClick(1100);
-  state.clickTimer = window.setInterval(() => playClick(880), interval);
+  state.clickTimer = window.setInterval(() => {
+    if (!state.playing || getMaster()?.paused || !els.metronomeToggle.checked) {
+      stopClick();
+      return;
+    }
+    playClick(880);
+  }, interval);
 }
 
 function stopClick() {
@@ -1100,7 +1120,7 @@ function playClick(frequency) {
   const gain = context.createGain();
   osc.frequency.value = frequency;
   gain.gain.setValueAtTime(0.0001, context.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.18, context.currentTime + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.38, context.currentTime + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.08);
   osc.connect(gain);
   gain.connect(context.destination);

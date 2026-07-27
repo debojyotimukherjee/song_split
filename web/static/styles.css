@@ -861,6 +861,20 @@ p {
   box-shadow: 0 0 30px rgba(229, 9, 20, 0.28);
 }
 
+.bar-card.loop-range {
+  border-color: rgba(43, 214, 117, 0.48);
+  background:
+    linear-gradient(135deg, rgba(43, 214, 117, 0.34), rgba(14, 92, 47, 0.3)),
+    var(--panel);
+  color: #eaffef;
+  box-shadow: inset 0 0 0 1px rgba(43, 214, 117, 0.12);
+}
+
+.bar-card.loop-range span {
+  border-color: rgba(101, 242, 154, 0.42);
+  color: #9dffbf;
+}
+
 .bar-card.active span {
   border-color: rgba(255, 255, 255, 0.34);
   color: rgba(255, 245, 245, 0.72);
