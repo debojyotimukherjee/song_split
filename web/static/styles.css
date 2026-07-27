@@ -572,7 +572,7 @@ p {
 
 .edit-mix-view.active {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto auto 1fr;
   gap: 18px;
 }
 
@@ -609,30 +609,69 @@ p {
   font-weight: 800;
 }
 
-.section-name-input {
-  min-height: 38px;
-  min-width: 190px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--panel);
-  color: var(--text);
-  padding: 0 10px;
+.practice-zone-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) 1fr;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid rgba(43, 214, 117, 0.28);
+  border-radius: 8px;
+  padding: 14px;
+  background:
+    linear-gradient(135deg, rgba(43, 214, 117, 0.14), transparent 46%),
+    rgba(20, 17, 17, 0.84);
 }
 
-.section-list {
-  display: flex;
-  flex-wrap: wrap;
+.practice-zone-panel strong {
+  display: block;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.practice-mute-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 8px;
 }
 
-.section-chip {
-  min-height: 32px;
-  border: 1px solid rgba(255, 176, 0, 0.28);
-  border-radius: 999px;
-  background: rgba(255, 176, 0, 0.08);
-  color: var(--stage);
-  padding: 0 12px;
+.practice-mute-chip {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: #100b0b;
+  color: var(--muted);
   cursor: pointer;
+  font-weight: 900;
+  text-align: left;
+}
+
+.practice-mute-chip .instrument-badge {
+  width: 32px;
+  height: 32px;
+  font-size: 17px;
+}
+
+.practice-mute-chip.active {
+  border-color: transparent;
+  background: linear-gradient(135deg, #2bd675, #0e5c2f);
+  color: #06140b;
+  box-shadow: 0 0 22px rgba(43, 214, 117, 0.2);
+}
+
+.practice-mute-chip.active .instrument-badge {
+  border-color: rgba(6, 20, 11, 0.26);
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow: none;
+}
+
+.practice-zone-empty {
+  color: var(--muted);
+  font-size: 13px;
   font-weight: 800;
 }
 
@@ -1075,6 +1114,7 @@ audio {
 
   .mix-console,
   .mix-toolbar,
+  .practice-zone-panel,
   .mix-strip,
   .edit-mix-deck {
     grid-template-columns: 1fr;

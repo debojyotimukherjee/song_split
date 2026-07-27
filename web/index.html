@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Weekend Stems</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260727-loop-bars-click" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260727-practice-zone" />
   </head>
   <body>
     <main class="app-shell">
@@ -72,7 +72,7 @@
             <label><input id="countInToggle" type="checkbox" /> Count-in</label>
             <label><input id="metronomeToggle" type="checkbox" /> Click</label>
           </div>
-          <span id="globalLoopStatus" class="global-loop-status">Loop off</span>
+          <span id="globalLoopStatus" class="global-loop-status">Practice Zone off</span>
         </header>
 
         <nav class="view-tabs" aria-label="Mixer views">
@@ -159,21 +159,23 @@
                 <option value="mp3">MP3 320k</option>
               </select>
             </label>
-            <button id="setLoopStartButton" class="secondary-button" type="button">Start Loop</button>
-            <button id="setLoopEndButton" class="secondary-button" type="button">End Loop</button>
-            <button id="clearLoopButton" class="secondary-button" type="button">Clear Loop</button>
-            <span id="loopStatus" class="mix-status">Loop off</span>
+            <button id="setLoopStartButton" class="secondary-button" type="button">Start Zone</button>
+            <button id="setLoopEndButton" class="secondary-button" type="button">End Zone</button>
+            <button id="clearLoopButton" class="secondary-button" type="button">Clear Zone</button>
+            <span id="loopStatus" class="mix-status">Practice Zone off</span>
           </div>
-          <div class="mix-toolbar">
-            <input id="sectionNameInput" class="section-name-input" type="text" placeholder="Intro, Verse, Solo..." />
-            <button id="addSectionButton" class="secondary-button" type="button">Mark Section</button>
-            <div id="sectionList" class="section-list"></div>
+          <div class="practice-zone-panel">
+            <div>
+              <span class="stage-label">Practice Zone Mute</span>
+              <strong>Mute only inside the selected zone</strong>
+            </div>
+            <div id="practiceMuteList" class="practice-mute-list"></div>
           </div>
           <div id="editMixDeck" class="edit-mix-deck"></div>
         </section>
       </section>
     </main>
 
-    <script src="/static/app.js?v=20260727-loop-bars-click"></script>
+    <script src="/static/app.js?v=20260727-practice-zone"></script>
   </body>
 </html>
