@@ -15,7 +15,12 @@ SAMPLE_RATE = 22_050
 FRAME_SIZE = 8192
 HOP_SIZE = 2048
 PITCH_NAMES = ("C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B")
-ACCOMPANIMENT_STEMS = (("guitar", 1.15), ("keys", 0.95), ("other", 0.42), ("bass", 0.32))
+ACCOMPANIMENT_STEMS = (
+    ("guitar", 1.15),
+    ("keys", 0.95),
+    ("other", 0.42),
+    ("bass", 0.32),
+)
 
 MAJOR_TEMPLATE = np.array([1.0, 0.0, 0.15, 0.0, 0.75, 0.1, 0.0, 0.8, 0.0, 0.15, 0.0, 0.0])
 MINOR_TEMPLATE = np.array([1.0, 0.0, 0.15, 0.75, 0.0, 0.1, 0.0, 0.8, 0.0, 0.15, 0.0, 0.0])
@@ -103,17 +108,18 @@ def _decode_analysis_audio(job_dir: Path, fallback_path: Path) -> tuple[np.ndarr
         if audio is None:
             continue
         rms = float(np.sqrt(np.mean(np.square(audio))) + 1e-9)
-        weighted_stems.append((audio / rms) * weight)
+        weighted_stems.append((stem_name, (audio / rms) * weight))
 
     if not weighted_stems:
         return _decode_audio(fallback_path), "normalized.wav"
 
-    length = min(audio.size for audio in weighted_stems)
+    length = min(audio.size for _, audio in weighted_stems)
     mix = np.zeros(length, dtype=np.float32)
-    for audio in weighted_stems:
+    for _, audio in weighted_stems:
         mix += audio[:length].astype(np.float32)
     peak = float(np.max(np.abs(mix)) + 1e-9)
-    return (mix / peak).astype(np.float32), "stems:guitar+keys+other+bass"
+    source_names = "+".join(stem_name for stem_name, _ in weighted_stems)
+    return (mix / peak).astype(np.float32), f"stems:{source_names}"
 
 
 def _decode_optional_stem(path: Path) -> np.ndarray | None:

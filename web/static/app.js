@@ -364,8 +364,8 @@ function audioUrl(jobId, trackName) {
   if (trackName === "bass" && els.bassMode.value === "raw") {
     return `/api/jobs/${encodeURIComponent(jobId)}/audio/stems_raw/bass.wav`;
   }
-  if (trackName === "guitar" && els.guitarMode.value === "focus") {
-    return `/api/jobs/${encodeURIComponent(jobId)}/audio/stems_focus/guitar.wav`;
+  if (trackName === "guitar" && els.guitarMode.value === "raw") {
+    return `/api/jobs/${encodeURIComponent(jobId)}/audio/stems_raw/guitar.wav`;
   }
   if (trackName === "keys" && els.keysMode.value === "focus") {
     return `/api/jobs/${encodeURIComponent(jobId)}/audio/stems_focus/keys.wav`;

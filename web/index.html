@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Weekend Stems</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260727-keys-rebuild" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260727-single-guitar" />
   </head>
   <body>
     <main class="app-shell">
@@ -63,28 +63,30 @@
             <span id="duration">0:00</span>
           </div>
           <input id="seekBar" class="seek" type="range" min="0" max="1000" value="0" aria-label="Seek" />
-          <label class="bass-mode">
-            Bass
-            <select id="bassMode" class="select compact">
-              <option value="clean">Clean</option>
-              <option value="raw">Raw</option>
-            </select>
-          </label>
-          <label class="guitar-mode">
-            Guitar
-            <select id="guitarMode" class="select compact">
-              <option value="direct">Direct</option>
-              <option value="focus">Focus</option>
-            </select>
-          </label>
-          <label class="keys-mode">
-            Keys
-            <select id="keysMode" class="select compact">
-              <option value="direct">Direct</option>
-              <option value="focus">Focus</option>
-              <option value="rebuild">Rebuild</option>
-            </select>
-          </label>
+          <div class="stem-mode-group" aria-label="Stem options">
+            <label class="bass-mode">
+              Bass
+              <select id="bassMode" class="select compact">
+                <option value="clean">Clean</option>
+                <option value="raw">Raw</option>
+              </select>
+            </label>
+            <label class="guitar-mode">
+              Guitar
+              <select id="guitarMode" class="select compact">
+                <option value="clean">Clean</option>
+                <option value="raw">Raw</option>
+              </select>
+            </label>
+            <label class="keys-mode">
+              Keys
+              <select id="keysMode" class="select compact">
+                <option value="direct">Direct</option>
+                <option value="focus">Focus</option>
+                <option value="rebuild">Rebuild</option>
+              </select>
+            </label>
+          </div>
           <label class="tempo-mode">
             Tempo
             <input id="tempoSlider" class="tempo-slider" type="range" min="50" max="125" step="1" value="100" />
@@ -143,6 +145,6 @@
       </section>
     </main>
 
-    <script src="/static/app.js?v=20260727-keys-rebuild"></script>
+    <script src="/static/app.js?v=20260727-single-guitar"></script>
   </body>
 </html>

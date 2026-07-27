@@ -6,7 +6,12 @@ from pathlib import Path
 from threading import Event
 from typing import Callable
 
-from app.audio.keys import FOCUS_STEMS_DIR, create_keys_focus_stem, create_keys_rebuild_stem
+from app.audio.instruments.bass import create_bass_stem
+from app.audio.instruments.drums import create_drums_stem
+from app.audio.instruments.guitar import create_guitar_stem
+from app.audio.instruments.keys import create_keys_stems
+from app.audio.instruments.other import create_other_stem
+from app.audio.instruments.vocals import create_backing_vocal_estimate
 from app.core.manifests import StemManifest
 
 
@@ -23,10 +28,6 @@ TARGET_STEMS = [
 DEMUX_SOURCE_STEMS = ("vocals", "drums", "bass", "guitar", "piano", "other")
 DIRECT_DEMUX_TO_TARGET = {
     "vocals": "main_vocal",
-    "drums": "drums",
-    "guitar": "guitar",
-    "piano": "keys",
-    "other": "other",
 }
 
 
@@ -140,7 +141,7 @@ def map_demucs_output(model_output_dir: Path, job_dir: Path) -> list[StemManifes
     vocals_file = raw_stems_dir / "vocals.wav"
     if vocals_file.exists():
         backing_vocal_file = stems_dir / "backing_vocal.wav"
-        _create_backing_vocal_estimate(vocals_file, backing_vocal_file)
+        create_backing_vocal_estimate(vocals_file, backing_vocal_file)
         manifests.append(
             StemManifest(
                 name="backing_vocal",
@@ -157,10 +158,25 @@ def map_demucs_output(model_output_dir: Path, job_dir: Path) -> list[StemManifes
         )
         mapped_targets.add("backing_vocal")
 
+    drums_file = raw_stems_dir / "drums.wav"
+    if drums_file.exists():
+        target_file = stems_dir / "drums.wav"
+        create_drums_stem(drums_file, target_file)
+        manifests.append(
+            StemManifest(
+                name="drums",
+                path=str(target_file),
+                status="generated",
+                source_stem="drums",
+                confidence=0.9,
+            )
+        )
+        mapped_targets.add("drums")
+
     bass_file = raw_stems_dir / "bass.wav"
     if bass_file.exists():
         target_file = stems_dir / "bass.wav"
-        _create_clean_bass(bass_file, target_file)
+        create_bass_stem(bass_file, target_file)
         manifests.append(
             StemManifest(
                 name="bass",
@@ -177,9 +193,54 @@ def map_demucs_output(model_output_dir: Path, job_dir: Path) -> list[StemManifes
         )
         mapped_targets.add("bass")
 
-    create_guitar_focus_stem(job_dir)
-    create_keys_focus_stem(job_dir)
-    create_keys_rebuild_stem(job_dir)
+    guitar_file = raw_stems_dir / "guitar.wav"
+    if guitar_file.exists():
+        target_file = stems_dir / "guitar.wav"
+        create_guitar_stem(guitar_file, target_file)
+        manifests.append(
+            StemManifest(
+                name="guitar",
+                path=str(target_file),
+                status="generated",
+                source_stem="guitar",
+                confidence=0.9,
+                notes=(
+                    "Cleaned from the raw Demucs guitar stem with rumble/hiss filtering and a "
+                    "presence boost. Raw guitar is preserved in stems_raw/guitar.wav."
+                ),
+            )
+        )
+        mapped_targets.add("guitar")
+
+    other_file = raw_stems_dir / "other.wav"
+    if other_file.exists():
+        target_file = stems_dir / "other.wav"
+        create_other_stem(other_file, target_file)
+        manifests.append(
+            StemManifest(
+                name="other",
+                path=str(target_file),
+                status="generated",
+                source_stem="other",
+                confidence=0.9,
+            )
+        )
+        mapped_targets.add("other")
+
+    keys_stems = create_keys_stems(job_dir)
+    if keys_stems:
+        for stem_info in keys_stems:
+            manifests.append(
+                StemManifest(
+                    name=stem_info.name,
+                    path=str(stem_info.path),
+                    status=stem_info.status,
+                    source_stem="piano",
+                    confidence=stem_info.confidence,
+                    notes=stem_info.notes,
+                )
+            )
+            mapped_targets.add(stem_info.name)
 
     for target in TARGET_STEMS:
         if target not in mapped_targets:
@@ -193,91 +254,6 @@ def map_demucs_output(model_output_dir: Path, job_dir: Path) -> list[StemManifes
             )
 
     return sorted(manifests, key=lambda item: TARGET_STEMS.index(item.name))
-
-
-def create_guitar_focus_stem(job_dir: Path) -> bool:
-    raw_stems_dir = job_dir / "stems_raw"
-    guitar_file = raw_stems_dir / "guitar.wav"
-    if not guitar_file.exists():
-        return False
-
-    source_files = [guitar_file]
-    weights = [1.0]
-    other_file = raw_stems_dir / "other.wav"
-    piano_file = raw_stems_dir / "piano.wav"
-    if other_file.exists():
-        source_files.append(other_file)
-        weights.append(0.42)
-    if piano_file.exists():
-        source_files.append(piano_file)
-        weights.append(0.18)
-
-    output_dir = job_dir / FOCUS_STEMS_DIR
-    output_dir.mkdir(parents=True, exist_ok=True)
-    _run_ffmpeg_mix(source_files, output_dir / "guitar.wav", weights)
-    return True
-
-
-def _create_clean_bass(source_file: Path, output_file: Path) -> None:
-    bass_filter = ",".join(
-        [
-            "highpass=f=35",
-            "lowpass=f=4200",
-            "equalizer=f=220:t=q:w=1.2:g=-4",
-            "equalizer=f=320:t=q:w=1.0:g=-2.5",
-            "alimiter=limit=0.98",
-        ]
-    )
-    _run_ffmpeg_filter(source_file, output_file, bass_filter)
-
-
-def _create_backing_vocal_estimate(source_file: Path, output_file: Path) -> None:
-    backing_filter = ",".join(
-        [
-            "pan=stereo|c0=0.55*c0-0.35*c1|c1=0.55*c1-0.35*c0",
-            "highpass=f=120",
-            "lowpass=f=9000",
-            "alimiter=limit=0.95",
-        ]
-    )
-    _run_ffmpeg_filter(source_file, output_file, backing_filter)
-
-
-def _run_ffmpeg_filter(source_file: Path, output_file: Path, audio_filter: str) -> None:
-    command = [
-        "ffmpeg",
-        "-y",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-i",
-        str(source_file),
-        "-af",
-        audio_filter,
-        str(output_file),
-    ]
-    subprocess.run(command, check=True)
-
-
-def _run_ffmpeg_mix(source_files: list[Path], output_file: Path, weights: list[float]) -> None:
-    command = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
-    for source_file in source_files:
-        command.extend(["-i", str(source_file)])
-
-    labels = []
-    filters = []
-    for index, weight in enumerate(weights):
-        label = f"a{index}"
-        labels.append(f"[{label}]")
-        filters.append(f"[{index}:a]volume={weight}[{label}]")
-
-    filter_complex = ";".join(filters)
-    filter_complex += (
-        f";{''.join(labels)}amix=inputs={len(source_files)}:duration=first:normalize=0,"
-        "alimiter=limit=0.98[out]"
-    )
-    command.extend(["-filter_complex", filter_complex, "-map", "[out]", str(output_file)])
-    subprocess.run(command, check=True)
 
 
 def _check_cancelled(cancel_event: Event | None) -> None:

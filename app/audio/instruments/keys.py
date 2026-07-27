@@ -1,19 +1,61 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
+from app.audio.instruments.bleed import reduce_spectral_bleed
+from app.audio.instruments.common import FOCUS_STEMS_DIR, REBUILD_STEMS_DIR, StemBuildInfo, run_ffmpeg_filter
 
-FOCUS_STEMS_DIR = "stems_focus"
-REBUILD_STEMS_DIR = "stems_rebuild"
 
+def create_keys_stems(job_dir: Path) -> list[StemBuildInfo] | None:
+    """Produce the keys/piano stem family, with guitar bleed suppressed first.
 
-def create_keys_focus_stem(job_dir: Path) -> bool:
+    Demucs' raw 'piano' stem often carries audible guitar bleed (piano is one of
+    the weaker-separated classes in htdemucs_6s), and that used to be copied
+    straight into stems/keys.wav with no cleanup at all. Now every keys variant
+    (main, focus, rebuild) is built from a guitar-bleed-reduced version of the
+    raw piano stem instead of the raw file directly.
+    """
     raw_stems_dir = job_dir / "stems_raw"
     piano_file = raw_stems_dir / "piano.wav"
     if not piano_file.exists():
-        return False
+        return None
 
+    guitar_file = raw_stems_dir / "guitar.wav"
+    split_dir = job_dir / "working" / "keys_split"
+    debled_piano = split_dir / "piano_debled.wav"
+    bleed_reduced = reduce_spectral_bleed(piano_file, [guitar_file], debled_piano)
+    source = debled_piano if bleed_reduced else piano_file
+
+    stems_dir = job_dir / "stems"
+    stems_dir.mkdir(parents=True, exist_ok=True)
+    keys_target = stems_dir / "keys.wav"
+    shutil.copy2(source, keys_target)
+
+    _create_keys_focus_stem(job_dir, source)
+    _create_keys_rebuild_stem(job_dir, source)
+
+    notes = (
+        "Guitar bleed suppressed with a spectral soft-mask against the raw guitar stem before "
+        "delivery; Demucs' piano stem is one of its weaker-separated classes."
+        if bleed_reduced
+        else "No raw guitar stem was available to suppress bleed against, so this is the "
+        "unmodified Demucs piano stem."
+    )
+
+    return [
+        StemBuildInfo(
+            name="keys",
+            path=keys_target,
+            status="generated",
+            confidence=0.78 if bleed_reduced else 0.7,
+            notes=notes,
+        )
+    ]
+
+
+def _create_keys_focus_stem(job_dir: Path, piano_source: Path) -> bool:
     output_dir = job_dir / FOCUS_STEMS_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
     keys_filter = ",".join(
@@ -30,23 +72,20 @@ def create_keys_focus_stem(job_dir: Path) -> bool:
             "alimiter=limit=0.98",
         ]
     )
-    _run_ffmpeg_filter(piano_file, output_dir / "keys.wav", keys_filter)
+    run_ffmpeg_filter(piano_source, output_dir / "keys.wav", keys_filter)
     return True
 
 
-def create_keys_rebuild_stem(job_dir: Path) -> bool:
+def _create_keys_rebuild_stem(job_dir: Path, piano_source: Path) -> bool:
     raw_stems_dir = job_dir / "stems_raw"
-    piano_file = raw_stems_dir / "piano.wav"
     other_file = raw_stems_dir / "other.wav"
-    if not piano_file.exists():
-        return False
 
     output_dir = job_dir / REBUILD_STEMS_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / "keys.wav"
 
     if not other_file.exists():
-        _run_ffmpeg_filter(piano_file, output_file, _keys_rebuild_single_filter())
+        run_ffmpeg_filter(piano_source, output_file, _keys_rebuild_single_filter())
         return True
 
     command = [
@@ -56,7 +95,7 @@ def create_keys_rebuild_stem(job_dir: Path) -> bool:
         "-loglevel",
         "error",
         "-i",
-        str(piano_file),
+        str(piano_source),
         "-i",
         str(other_file),
         "-filter_complex",
@@ -120,19 +159,3 @@ def _keys_rebuild_mix_filter() -> str:
         "dynaudnorm=f=120:g=10:p=0.58,"
         "alimiter=limit=0.98[out]"
     )
-
-
-def _run_ffmpeg_filter(source_file: Path, output_file: Path, audio_filter: str) -> None:
-    command = [
-        "ffmpeg",
-        "-y",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-i",
-        str(source_file),
-        "-af",
-        audio_filter,
-        str(output_file),
-    ]
-    subprocess.run(command, check=True)
