@@ -271,24 +271,13 @@ p {
   top: 0;
   z-index: 2;
   display: grid;
-  grid-template-columns: 96px 48px auto minmax(180px, 1fr) minmax(330px, auto) 210px;
+  grid-template-columns: 96px 48px auto minmax(180px, 1fr) 210px;
   gap: 12px;
   align-items: center;
   min-height: 76px;
   padding: 16px 22px;
   border-bottom: 1px solid var(--line);
   background: rgba(10, 7, 7, 0.97);
-}
-
-.stem-mode-group {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 8px 10px;
-  border: 1px solid rgba(255, 64, 89, 0.18);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.035);
 }
 
 .transport-button {
@@ -313,17 +302,6 @@ p {
 .seek {
   width: 100%;
   accent-color: var(--accent);
-}
-
-.bass-mode,
-.guitar-mode,
-.keys-mode {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: flex-end;
-  color: var(--muted);
-  font-size: 13px;
 }
 
 .tempo-mode {
@@ -778,17 +756,8 @@ audio {
 
   .time-readout,
   .seek,
-  .stem-mode-group,
-  .bass-mode,
-  .guitar-mode,
-  .keys-mode,
   .tempo-mode {
     grid-column: 1 / -1;
-  }
-
-  .stem-mode-group {
-    flex-wrap: wrap;
-    justify-content: flex-start;
   }
 
   .tempo-mode {

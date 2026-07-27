@@ -98,9 +98,6 @@ const els = {
   seekBar: document.querySelector("#seekBar"),
   tempoSlider: document.querySelector("#tempoSlider"),
   tempoValue: document.querySelector("#tempoValue"),
-  bassMode: document.querySelector("#bassMode"),
-  guitarMode: document.querySelector("#guitarMode"),
-  keysMode: document.querySelector("#keysMode"),
   fileInput: document.querySelector("#fileInput"),
   uploadButton: document.querySelector("#uploadButton"),
   splitButton: document.querySelector("#splitButton"),
@@ -134,15 +131,6 @@ function bindEvents() {
     const duration = getDuration();
     seekAll((Number(els.seekBar.value) / 1000) * duration);
     state.seeking = false;
-  });
-  els.bassMode.addEventListener("change", () => {
-    if (state.job) renderTracks(state.job);
-  });
-  els.guitarMode.addEventListener("change", () => {
-    if (state.job) renderTracks(state.job);
-  });
-  els.keysMode.addEventListener("change", () => {
-    if (state.job) renderTracks(state.job);
   });
   els.tempoSlider.addEventListener("input", () => {
     setPlaybackRate(Number(els.tempoSlider.value) / 100);
@@ -316,7 +304,7 @@ function renderTracks(job) {
     row.innerHTML = `
       <div class="track-title">
         <span class="track-name"><span class="instrument-badge" aria-label="${TRACK_LABELS[name]}" title="${TRACK_LABELS[name]}">${TRACK_INSTRUMENTS[name] || "🎚️"}</span>${TRACK_LABELS[name]}</span>
-        <span class="track-status ${stem.status}">${stem.status}${modeLabel(name)}</span>
+        <span class="track-status ${stem.status}">${stem.status}</span>
       </div>
       <div class="wave-wrap"><canvas class="waveform" width="900" height="80"></canvas><span class="playhead"></span></div>
       <div class="track-controls">
@@ -361,26 +349,10 @@ function renderTracks(job) {
 }
 
 function audioUrl(jobId, trackName) {
-  if (trackName === "bass" && els.bassMode.value === "raw") {
-    return `/api/jobs/${encodeURIComponent(jobId)}/audio/stems_raw/bass.wav`;
-  }
-  if (trackName === "guitar" && els.guitarMode.value === "raw") {
-    return `/api/jobs/${encodeURIComponent(jobId)}/audio/stems_raw/guitar.wav`;
-  }
-  if (trackName === "keys" && els.keysMode.value === "focus") {
-    return `/api/jobs/${encodeURIComponent(jobId)}/audio/stems_focus/keys.wav`;
-  }
-  if (trackName === "keys" && els.keysMode.value === "rebuild") {
+  if (trackName === "keys") {
     return `/api/jobs/${encodeURIComponent(jobId)}/audio/stems_rebuild/keys.wav`;
   }
   return `/api/jobs/${encodeURIComponent(jobId)}/audio/stems/${trackName}.wav`;
-}
-
-function modeLabel(trackName) {
-  if (trackName === "bass") return ` - ${els.bassMode.value}`;
-  if (trackName === "guitar") return ` - ${els.guitarMode.value}`;
-  if (trackName === "keys") return ` - ${els.keysMode.value}`;
-  return "";
 }
 
 function getMaster() {
