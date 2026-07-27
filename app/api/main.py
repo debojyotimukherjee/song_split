@@ -3,12 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 import shutil
+import subprocess
+import zipfile
 from threading import Event, Lock, Thread
 from typing import Literal
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from app.audio.chords import analyze_job_chords, read_chord_analysis
 from app.audio.pipeline import process_file
@@ -37,6 +40,36 @@ class SplitTask:
 
 split_tasks: dict[str, SplitTask] = {}
 split_tasks_lock = Lock()
+
+
+class MixTrackSettings(BaseModel):
+    volume: float = Field(default=1.0, ge=0.0, le=2.0)
+    muted: bool = False
+    low: float = Field(default=0.0, ge=-12.0, le=12.0)
+    mid: float = Field(default=0.0, ge=-12.0, le=12.0)
+    high: float = Field(default=0.0, ge=-12.0, le=12.0)
+    reverb: float = Field(default=50.0, ge=0.0, le=100.0)
+    compression: float = Field(default=50.0, ge=0.0, le=100.0)
+
+
+class HdMixRequest(BaseModel):
+    tracks: dict[str, MixTrackSettings] = Field(default_factory=dict)
+    hd_master: bool = True
+    semitones: int = Field(default=0, ge=-12, le=12)
+    format: Literal["wav", "mp3"] = "wav"
+    preset: Literal["full", "minus_vocals", "minus_guitar", "minus_keys", "stems_zip"] = "full"
+
+
+class MixSettingsRequest(BaseModel):
+    settings: dict = Field(default_factory=dict)
+
+
+class ChordUpdateRequest(BaseModel):
+    chord: str
+
+
+class SectionsRequest(BaseModel):
+    sections: list[dict] = Field(default_factory=list)
 
 WEB_DIR = Path("web")
 if WEB_DIR.exists():
@@ -173,6 +206,97 @@ def get_job_audio(job_id: str, collection: str, filename: str) -> FileResponse:
     return FileResponse(audio_path, media_type="audio/wav")
 
 
+@app.post("/api/jobs/{job_id}/exports/hd-mix")
+def create_hd_mix(job_id: str, request: HdMixRequest) -> dict:
+    settings = Settings.from_env()
+    job_dir = _resolve_job_dir(settings, job_id)
+    output_path = _render_stems_zip(job_dir) if request.preset == "stems_zip" else _render_hd_mix(job_dir, request)
+    return {
+        "filename": output_path.name,
+        "url": f"/api/jobs/{job_id}/exports/{output_path.name}",
+    }
+
+
+@app.get("/api/jobs/{job_id}/exports/{filename}")
+def get_job_export(job_id: str, filename: str) -> FileResponse:
+    if "/" in filename or not filename.endswith((".wav", ".mp3", ".zip")):
+        raise HTTPException(status_code=400, detail="Invalid export filename.")
+    settings = Settings.from_env()
+    job_dir = _resolve_job_dir(settings, job_id)
+    export_path = job_dir / "exports" / filename
+    if not export_path.exists():
+        raise HTTPException(status_code=404, detail="Export not found.")
+    media_type = "application/zip" if filename.endswith(".zip") else "audio/mpeg" if filename.endswith(".mp3") else "audio/wav"
+    return FileResponse(export_path, media_type=media_type, filename=filename)
+
+
+@app.get("/api/jobs/{job_id}/mix-settings")
+def get_mix_settings(job_id: str) -> dict:
+    settings = Settings.from_env()
+    job_dir = _resolve_job_dir(settings, job_id)
+    path = job_dir / "analysis" / "mix_settings.json"
+    if not path.exists():
+        return {"settings": {}}
+    import json
+
+    return {"settings": json.loads(path.read_text(encoding="utf-8"))}
+
+
+@app.put("/api/jobs/{job_id}/mix-settings")
+def save_mix_settings(job_id: str, request: MixSettingsRequest) -> dict:
+    settings = Settings.from_env()
+    job_dir = _resolve_job_dir(settings, job_id)
+    path = job_dir / "analysis" / "mix_settings.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    import json
+
+    path.write_text(json.dumps(request.settings, indent=2), encoding="utf-8")
+    return {"saved": True}
+
+
+@app.patch("/api/jobs/{job_id}/chords/{index}")
+def update_chord_segment(job_id: str, index: int, request: ChordUpdateRequest) -> dict:
+    settings = Settings.from_env()
+    job_dir = _resolve_job_dir(settings, job_id)
+    analysis = read_chord_analysis(job_dir)
+    segments = analysis.get("segments") or []
+    if index < 0 or index >= len(segments):
+        raise HTTPException(status_code=404, detail="Chord segment not found.")
+    segments[index]["chord"] = request.chord.strip() or segments[index].get("chord", "N")
+    analysis["segments"] = segments
+    analysis.setdefault("notes", []).append("Contains manual chord corrections.")
+    analysis_dir = job_dir / "analysis"
+    analysis_dir.mkdir(parents=True, exist_ok=True)
+    import json
+
+    (analysis_dir / "chords.json").write_text(json.dumps(analysis, indent=2), encoding="utf-8")
+    return analysis
+
+
+@app.get("/api/jobs/{job_id}/sections")
+def get_sections(job_id: str) -> dict:
+    settings = Settings.from_env()
+    job_dir = _resolve_job_dir(settings, job_id)
+    path = job_dir / "analysis" / "sections.json"
+    if not path.exists():
+        return {"sections": []}
+    import json
+
+    return {"sections": json.loads(path.read_text(encoding="utf-8"))}
+
+
+@app.put("/api/jobs/{job_id}/sections")
+def save_sections(job_id: str, request: SectionsRequest) -> dict:
+    settings = Settings.from_env()
+    job_dir = _resolve_job_dir(settings, job_id)
+    path = job_dir / "analysis" / "sections.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    import json
+
+    path.write_text(json.dumps(request.sections, indent=2), encoding="utf-8")
+    return {"saved": True, "sections": request.sections}
+
+
 @app.post("/jobs")
 def create_job(file: UploadFile = File(...), engine: str = "none") -> dict:
     settings = Settings.from_env()
@@ -242,6 +366,133 @@ def _mark_manifest_status(settings: Settings, job_id: str | None, status: str, w
     manifest.updated_at = utc_now()
     manifest.warnings.append(warning)
     write_manifest(job_dir, manifest)
+
+
+def _render_hd_mix(job_dir: Path, request: HdMixRequest) -> Path:
+    track_files = _mix_track_files(job_dir)
+    inputs: list[tuple[str, Path, MixTrackSettings]] = []
+    for track_name, path in track_files.items():
+        if not path.exists():
+            continue
+        track_settings = request.tracks.get(track_name, MixTrackSettings())
+        if request.preset == "minus_vocals" and track_name in {"main_vocal", "backing_vocal"}:
+            track_settings.muted = True
+        elif request.preset == "minus_guitar" and track_name == "guitar":
+            track_settings.muted = True
+        elif request.preset == "minus_keys" and track_name == "keys":
+            track_settings.muted = True
+        if track_settings.muted or track_settings.volume <= 0:
+            continue
+        inputs.append((track_name, path, track_settings))
+
+    if not inputs:
+        raise HTTPException(status_code=400, detail="No audible tracks available for HD mix.")
+
+    exports_dir = job_dir / "exports"
+    exports_dir.mkdir(parents=True, exist_ok=True)
+    suffix = f"{request.preset}_{request.semitones:+d}st"
+    output_path = exports_dir / (f"hd_mix_{suffix}.mp3" if request.format == "mp3" else f"hd_mix_{suffix}_48k_24bit.wav")
+
+    command = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
+    for _, path, _ in inputs:
+        command.extend(["-i", str(path)])
+
+    chains = []
+    labels = []
+    for index, (_, _, settings) in enumerate(inputs):
+        label = f"a{index}"
+        labels.append(f"[{label}]")
+        filters = [
+            "highpass=f=20",
+            "lowpass=f=20000",
+            f"equalizer=f=120:t=q:w=0.7:g={settings.low}",
+            f"equalizer=f=1100:t=q:w=0.95:g={settings.mid}",
+            f"equalizer=f=6200:t=q:w=0.7:g={settings.high}",
+        ]
+        if settings.reverb > 50:
+            decay = round(min(0.72, max(0.0, (settings.reverb - 50) / 50 * 0.72)), 3)
+            filters.append(f"aecho=0.82:0.88:55|118:{decay}|{round(decay * 0.68, 3)}")
+        if settings.compression > 50:
+            amount = min(1.0, max(0.0, (settings.compression - 50) / 50))
+            threshold = round(0.18 - amount * 0.12, 3)
+            ratio = round(2 + amount * 6, 2)
+            filters.append(f"acompressor=threshold={threshold}:ratio={ratio}:attack=8:release=140:makeup=1")
+        filters.append(f"volume={settings.volume}")
+        if request.semitones:
+            filters.extend(_pitch_shift_filters(request.semitones))
+        chains.append(f"[{index}:a]{','.join(filters)}[{label}]")
+
+    master_filters = [
+        f"{''.join(labels)}amix=inputs={len(inputs)}:duration=longest:normalize=0"
+    ]
+    if request.hd_master:
+        master_filters.extend(
+            [
+                "dynaudnorm=f=150:g=9:p=0.45",
+                "loudnorm=I=-14:TP=-1.2:LRA=11",
+                "alimiter=limit=0.98",
+            ]
+        )
+    else:
+        master_filters.append("alimiter=limit=0.98")
+    master_filters.append("aresample=48000")
+    chains.append(f"{','.join(master_filters)}[out]")
+
+    command.extend(
+        [
+            "-filter_complex",
+            ";".join(chains),
+            "-map",
+            "[out]",
+        ]
+    )
+    if request.format == "mp3":
+        command.extend(["-ar", "48000", "-codec:a", "libmp3lame", "-b:a", "320k", str(output_path)])
+    else:
+        command.extend(["-ar", "48000", "-c:a", "pcm_s24le", str(output_path)])
+    subprocess.run(command, check=True)
+    return output_path
+
+
+def _pitch_shift_filters(semitones: int) -> list[str]:
+    ratio = 2 ** (semitones / 12)
+    tempo = 1 / ratio
+    filters = [f"asetrate=48000*{ratio}", "aresample=48000"]
+    if tempo < 0.5:
+        filters.extend(["atempo=0.5", f"atempo={tempo / 0.5}"])
+    elif tempo > 2:
+        filters.extend(["atempo=2", f"atempo={tempo / 2}"])
+    else:
+        filters.append(f"atempo={tempo}")
+    return filters
+
+
+def _render_stems_zip(job_dir: Path) -> Path:
+    exports_dir = job_dir / "exports"
+    exports_dir.mkdir(parents=True, exist_ok=True)
+    output_path = exports_dir / "weekend_stems_tracks.zip"
+    with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for track_name, path in _mix_track_files(job_dir).items():
+            if path.exists():
+                archive.write(path, arcname=f"{track_name}.wav")
+    return output_path
+
+
+def _mix_track_files(job_dir: Path) -> dict[str, Path]:
+    return {
+        "main_vocal": job_dir / "stems" / "main_vocal.wav",
+        "backing_vocal": job_dir / "stems" / "backing_vocal.wav",
+        "drums": job_dir / "stems" / "drums.wav",
+        "bass": job_dir / "stems" / "bass.wav",
+        "guitar": job_dir / "stems" / "guitar.wav",
+        "keys": _preferred_keys_path(job_dir),
+        "other": job_dir / "stems" / "other.wav",
+    }
+
+
+def _preferred_keys_path(job_dir: Path) -> Path:
+    rebuilt = job_dir / "stems_rebuild" / "keys.wav"
+    return rebuilt if rebuilt.exists() else job_dir / "stems" / "keys.wav"
 
 
 def _get_split_task(task_id: str) -> SplitTask:

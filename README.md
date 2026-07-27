@@ -1,83 +1,194 @@
 # Weekend Stems
 
-Turn a song into separate tracks you can mute, solo, mix, and slow down for practice — vocals, drums, bass, guitar, keys, and more. Built for band rehearsal prep, runs entirely on your own machine (nothing is uploaded anywhere), and is driven by Docker so there's nothing else to install.
+Weekend Stems is a local rehearsal app for Wannabe Weekenders. Drop in a song, split it into playable stems, slow it down, follow chords by bar, transpose the chart, loop hard sections, and build practice mixes without uploading your music anywhere.
 
-## What you get
+## Docker Installation
 
-Drop in an MP3 (or WAV/FLAC/M4A), and Weekend Stems splits it into:
+Weekend Stems runs with Docker so bandmates do not need to install Python, FFmpeg, Demucs, or any music-analysis libraries directly.
 
-| Track | What it is |
-|---|---|
-| Main Vocal | Lead vocal |
-| Backing Vocal | Harmonies/doubles, estimated from the vocal track |
-| Drums | Full drum kit |
-| Bass | Bass guitar |
-| Guitar | All guitars, cleaned up |
-| Keys | Piano/keys, with bleed from other instruments suppressed |
-| Other | Everything else (sax, strings, synths, etc.) |
+### Mac
 
-It also detects chords, tempo, and the song's key, and lets you change the playback pitch to a different key or slow the whole song down without changing pitch — handy for learning a part before rehearsal.
+1. Install Docker Desktop for Mac from https://www.docker.com/products/docker-desktop/.
+2. Open Docker Desktop once and leave it running.
+3. Open Terminal.
+4. Go to the Weekend Stems folder:
 
-Every track is labeled as **generated** (directly from the separation model) or **estimated** (derived/approximated, lower confidence) so you always know how much to trust what you're hearing.
+```bash
+cd /Users/debo/Documents/song_split
+```
 
-## Requirements
-
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
-- A few GB of free disk space (the separation model and audio files add up).
-- Internet access the first time you run it, to download the separation model (a few hundred MB, one-time — cached locally after that).
-
-## Quick start
-
-Open a terminal in this folder and run:
+5. Build the app with the separation engine:
 
 ```bash
 INSTALL_DEMUCS=true docker compose build
+```
+
+6. Start the app:
+
+```bash
 INSTALL_DEMUCS=true docker compose up api
 ```
 
-Then open **http://localhost:8000** in your browser. Upload a song, hit **Split Tracks**, and wait — the first split is slower because it's downloading the model; after that it's much quicker.
+7. Open http://localhost:8000 in Chrome, Edge, or Safari.
 
-To stop the app, press `Ctrl+C` in that terminal, or run `docker compose down` from another one.
+### Windows
 
-> `INSTALL_DEMUCS=true` builds the full image with the separation engine. Leaving it off (`docker compose build` / `docker compose up api`) builds a lighter image that can ingest and normalize audio but can't actually separate tracks — mainly useful for quickly checking the app boots.
+1. Install Docker Desktop for Windows from https://www.docker.com/products/docker-desktop/.
+2. During install, allow Docker to use WSL 2 if it asks.
+3. Open Docker Desktop once and leave it running.
+4. Open PowerShell.
+5. Go to the Weekend Stems folder. Example:
 
-## Using the app
+```powershell
+cd C:\Users\YourName\Documents\song_split
+```
 
-- **Songs** (left sidebar): pick a previously processed song, or upload a new one and click **Split Tracks**. **Upload only** just stores the file without processing it.
-- **Track view**: each stem gets its own row with mute, solo, and volume. Bass, Guitar, and Keys have a mode switch (e.g. Clean vs Raw) if you want to compare the cleaned-up track against the model's untouched output.
-- **Chord view / Song Key**: shows detected chords and lets you transpose the on-screen chart to a different key without changing the audio.
-- **Tempo slider**: play the song slower for practice, without changing pitch.
-- **Remove Song**: deletes a processed song and all its files.
+6. Build the app with the separation engine:
 
-## Where your files go
+```powershell
+$env:INSTALL_DEMUCS="true"; docker compose build
+```
 
-Everything lives in the `data/` folder next to this README, on your own disk — nothing leaves your machine:
+7. Start the app:
+
+```powershell
+$env:INSTALL_DEMUCS="true"; docker compose up api
+```
+
+8. Open http://localhost:8000 in Chrome or Edge.
+
+### Stop the App
+
+Press `Ctrl+C` in the terminal running Docker, or run:
+
+```bash
+docker compose down
+```
+
+## What Weekend Stems Creates
+
+Upload an MP3, WAV, FLAC, or M4A and click **Split Tracks**. The app creates:
+
+| Track | Notes |
+|---|---|
+| Main Vocal | Lead vocal from the vocal stem |
+| Backing Vocal | Estimated harmony/double vocal track |
+| Drums | Full drum kit |
+| Bass | Cleaned bass stem with mud reduction |
+| Guitar | Cleaned guitar stem |
+| Keys | Rebuilt keys/piano stem with guitar bleed suppression |
+| Other | Sax, strings, synths, percussion, accordion, and anything not captured above |
+
+Each track is labeled as generated or estimated so you know which stems are stronger and which are approximate.
+
+## Main Features
+
+- **Songs sidebar**: select processed songs, upload new songs, split tracks, cancel a split, watch progress, or remove a song.
+- **Track View**: play synchronized stems with waveform lanes, volume, mute, and solo controls.
+- **Chord View**: shows the song as bars, four bars per row, with the current bar moving as the song plays.
+- **Chord correction**: double-click a chord/bar to manually correct it.
+- **Song Key**: detects the song key and lets you transpose the displayed chord chart.
+- **Shifted audio render**: render a transposed mix when you want the audio to match the selected key.
+- **Tempo control**: slow down or speed up playback for practice while preserving pitch.
+- **Count-in and click**: optional count-in and metronome click while the song is playing.
+- **Regular Loop**: mark a start and end range, then repeat that range for focused practice.
+- **Practice Zone**: use the same start/end range without looping; selected tracks mute only inside that zone, then the full mix resumes after it.
+- **Edit Mix**: per-track EQ, reverb, compression, mute, preset, and flat reset controls.
+- **HD Mix**: enable the master chain and render WAV or MP3 exports.
+- **Export presets**: full mix, minus vocals, minus guitar, minus keys, or a ZIP of stems.
+
+## Regular Loop vs Practice Zone
+
+In **Edit Mix**, choose **Range Mode**:
+
+- **Regular Loop**: `Start Range` and `End Range` create a true loop. Playback jumps back to the start when it reaches the end.
+- **Practice Zone**: `Start Range` and `End Range` create a non-looping practice range. Pick tracks under **Practice Zone Mute** and those tracks mute only while playback is inside the range.
+
+The active range is shown in green on the chord bars.
+
+## Where Files Are Stored
+
+All files stay local in the `data/` folder beside this README:
 
 ```text
 data/
-├── inbox/    uploaded source files
-├── jobs/     one folder per processed song (stems, exports, manifest.json)
-└── models/   cached separation model (downloaded once)
+├── inbox/      uploaded source files
+├── jobs/       one folder per processed song
+│   └── <song_id>/
+│       ├── analysis/       chords, tempo, key, mix settings
+│       ├── exports/        rendered mixes and ZIPs
+│       ├── stems/          final playable stems
+│       ├── stems_raw/      raw model output
+│       ├── stems_focus/    alternate focused stems
+│       └── stems_rebuild/  rebuilt keys stem
+└── models/     cached separation models
 ```
 
-## Command line (optional)
+Nothing is uploaded to a cloud service by Weekend Stems.
 
-For running things outside the browser, e.g. batch-processing files:
+## Command Line Tools
+
+These are optional, but useful for troubleshooting or batch work:
 
 ```bash
 # Separate a file into stems
 INSTALL_DEMUCS=true docker compose run --rm worker separate data/inbox/your-song.mp3 --engine demucs
 
-# Re-run track cleanup on an already-separated song (no need to re-run the model)
+# Re-run stem cleanup/remapping without re-running the full model
 INSTALL_DEMUCS=true docker compose run --rm worker remap data/jobs/<job_id>
 
-# Re-run chord/key/tempo detection on an already-separated song
+# Re-run chord, key, and tempo detection
 INSTALL_DEMUCS=true docker compose run --rm worker analyze-chords data/jobs/<job_id>
 ```
 
 ## Troubleshooting
 
-**Something's misbehaving and you want a clean slate:**
+**Docker is not running**
+
+Open Docker Desktop first, wait until it says it is running, then try the command again.
+
+**First split is slow**
+
+The first run downloads the separation model and can take a while. Later runs reuse the cached model in `data/models/`.
+
+**"Demucs is not installed in this container"**
+
+Rebuild with `INSTALL_DEMUCS=true`.
+
+```bash
+INSTALL_DEMUCS=true docker compose build
+```
+
+**Port 8000 is already in use**
+
+Stop the other app using port 8000, or edit `docker-compose.yml` and change:
+
+```yaml
+ports:
+  - "8000:8000"
+```
+
+to something like:
+
+```yaml
+ports:
+  - "8080:8000"
+```
+
+Then open http://localhost:8080.
+
+**Changes are not showing up**
+
+The app code is baked into the Docker image. Rebuild and restart:
+
+```bash
+docker compose down
+INSTALL_DEMUCS=true docker compose up -d --build api
+```
+
+**Clean slate**
+
+This deletes uploaded songs, processed stems, exports, and cached models:
 
 ```bash
 docker compose down
@@ -85,11 +196,3 @@ rm -rf data/inbox/* data/jobs/* data/models/*
 INSTALL_DEMUCS=true docker compose build --no-cache
 INSTALL_DEMUCS=true docker compose up api
 ```
-
-This clears all processed songs and the cached model (it'll re-download on the next split) and rebuilds the image from scratch.
-
-**"Demucs is not installed in this container"** — you built or ran without `INSTALL_DEMUCS=true`. Rebuild with it set.
-
-**Port 8000 already in use** — something else on your machine is using that port. Stop it, or edit the `ports:` line in `docker-compose.yml` to map a different port (e.g. `"8080:8000"`), then open that port in your browser instead.
-
-**Code changes not showing up** — the app's code is baked into the Docker image, not live-reloaded. After changing anything under `app/` or `web/`, rebuild with `docker compose build` before restarting.

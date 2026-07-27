@@ -28,6 +28,22 @@ const TRACK_INSTRUMENTS = {
   other: "🎷",
 };
 
+const EQ_BANDS = [
+  { key: "low", label: "Low", type: "lowshelf", frequency: 120, q: 0.7 },
+  { key: "mid", label: "Mid", type: "peaking", frequency: 1100, q: 0.95 },
+  { key: "high", label: "High", type: "highshelf", frequency: 6200, q: 0.7 },
+];
+
+const MIX_PRESETS = {
+  main_vocal: { low: -1, mid: 2, high: 1, reverb: 62, compression: 64 },
+  backing_vocal: { low: -2, mid: 1, high: 1, reverb: 66, compression: 58 },
+  drums: { low: 2, mid: 0, high: 2, reverb: 54, compression: 60 },
+  bass: { low: 3, mid: -2, high: 0, reverb: 50, compression: 56 },
+  guitar: { low: -1, mid: 2, high: 2, reverb: 58, compression: 54 },
+  keys: { low: -2, mid: 1, high: 3, reverb: 60, compression: 52 },
+  other: { low: -1, mid: 0, high: 1, reverb: 58, compression: 52 },
+};
+
 const KEY_OPTIONS = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
 const NOTE_TO_PC = {
   C: 0,
@@ -62,6 +78,19 @@ const state = {
   detectedKey: null,
   targetKey: null,
   playbackRate: 1,
+  audioContext: null,
+  masterInput: null,
+  masterCompressor: null,
+  masterGain: null,
+  reverbImpulse: null,
+  hdMaster: false,
+  mixSettings: new Map(),
+  loopStart: null,
+  loopEnd: null,
+  loopMode: "regular",
+  practiceMuteTracks: new Set(),
+  clickTimer: null,
+  countInActive: false,
   playing: false,
   seeking: false,
   activeView: "track",
@@ -77,6 +106,7 @@ const els = {
   trackView: document.querySelector("#trackView"),
   chordView: document.querySelector("#chordView"),
   keyView: document.querySelector("#keyView"),
+  editMixView: document.querySelector("#editMixView"),
   jobSelect: document.querySelector("#jobSelect"),
   deleteSongButton: document.querySelector("#deleteSongButton"),
   jobMeta: document.querySelector("#jobMeta"),
@@ -91,6 +121,24 @@ const els = {
   targetKey: document.querySelector("#targetKey"),
   transposeSummary: document.querySelector("#transposeSummary"),
   resetKeyButton: document.querySelector("#resetKeyButton"),
+  audioKeyStatus: document.querySelector("#audioKeyStatus"),
+  renderShiftedButton: document.querySelector("#renderShiftedButton"),
+  editMixDeck: document.querySelector("#editMixDeck"),
+  hdMasterButton: document.querySelector("#hdMasterButton"),
+  hdExportButton: document.querySelector("#hdExportButton"),
+  saveMixButton: document.querySelector("#saveMixButton"),
+  exportPreset: document.querySelector("#exportPreset"),
+  exportFormat: document.querySelector("#exportFormat"),
+  loopModeSelect: document.querySelector("#loopModeSelect"),
+  setLoopStartButton: document.querySelector("#setLoopStartButton"),
+  setLoopEndButton: document.querySelector("#setLoopEndButton"),
+  clearLoopButton: document.querySelector("#clearLoopButton"),
+  loopStatus: document.querySelector("#loopStatus"),
+  globalLoopStatus: document.querySelector("#globalLoopStatus"),
+  practiceMuteList: document.querySelector("#practiceMuteList"),
+  countInToggle: document.querySelector("#countInToggle"),
+  metronomeToggle: document.querySelector("#metronomeToggle"),
+  mixStatus: document.querySelector("#mixStatus"),
   playButton: document.querySelector("#playButton"),
   stopButton: document.querySelector("#stopButton"),
   currentTime: document.querySelector("#currentTime"),
@@ -98,9 +146,6 @@ const els = {
   seekBar: document.querySelector("#seekBar"),
   tempoSlider: document.querySelector("#tempoSlider"),
   tempoValue: document.querySelector("#tempoValue"),
-  bassMode: document.querySelector("#bassMode"),
-  guitarMode: document.querySelector("#guitarMode"),
-  keysMode: document.querySelector("#keysMode"),
   fileInput: document.querySelector("#fileInput"),
   uploadButton: document.querySelector("#uploadButton"),
   splitButton: document.querySelector("#splitButton"),
@@ -135,20 +180,22 @@ function bindEvents() {
     seekAll((Number(els.seekBar.value) / 1000) * duration);
     state.seeking = false;
   });
-  els.bassMode.addEventListener("change", () => {
-    if (state.job) renderTracks(state.job);
-  });
-  els.guitarMode.addEventListener("change", () => {
-    if (state.job) renderTracks(state.job);
-  });
-  els.keysMode.addEventListener("change", () => {
-    if (state.job) renderTracks(state.job);
-  });
   els.tempoSlider.addEventListener("input", () => {
     setPlaybackRate(Number(els.tempoSlider.value) / 100);
   });
   els.targetKey.addEventListener("change", () => setTargetKey(els.targetKey.value));
   els.resetKeyButton.addEventListener("click", () => setTargetKey(state.detectedKey || "C"));
+  els.renderShiftedButton.addEventListener("click", renderShiftedMix);
+  els.hdMasterButton.addEventListener("click", toggleHdMaster);
+  els.hdExportButton.addEventListener("click", renderHdMix);
+  els.saveMixButton.addEventListener("click", saveMixSettings);
+  els.loopModeSelect.addEventListener("change", () => setLoopMode(els.loopModeSelect.value));
+  els.setLoopStartButton.addEventListener("click", setLoopStart);
+  els.setLoopEndButton.addEventListener("click", setLoopEnd);
+  els.clearLoopButton.addEventListener("click", clearLoop);
+  els.metronomeToggle.addEventListener("change", () => {
+    if (state.playing) startOrStopClick();
+  });
   els.uploadButton.addEventListener("click", () => uploadSelectedFile("none"));
   els.splitButton.addEventListener("click", () => uploadSelectedFile("demucs"));
   els.cancelSplitButton.addEventListener("click", cancelCurrentSplit);
@@ -163,6 +210,7 @@ async function loadJobs() {
     els.jobSelect.innerHTML = "<option>No songs found</option>";
     els.jobMeta.textContent = "Split a song first.";
     els.tracks.innerHTML = '<div class="empty">No separated songs yet.</div>';
+    els.editMixDeck.innerHTML = '<div class="empty">No separated songs yet.</div>';
     els.deleteSongButton.disabled = true;
     return;
   }
@@ -189,7 +237,13 @@ async function selectJob(jobId) {
     Status: ${escapeHtml(state.job.status)}<br />
     Updated: ${new Date(state.job.updated_at).toLocaleString()}
   `;
+  state.loopStart = null;
+  state.loopEnd = null;
+  state.loopMode = "regular";
+  state.practiceMuteTracks = new Set();
   renderTracks(state.job);
+  await loadMixSettings();
+  renderEditMix();
   await loadChords(state.job.job_id);
 }
 
@@ -207,6 +261,7 @@ async function loadChords(jobId) {
   els.chordViewBar.textContent = "Bar 1";
   updateTempoReadout();
   updateKeyReadout();
+  updateAudioKeyStatus();
   try {
     const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/chords`);
     if (!response.ok) return;
@@ -231,6 +286,7 @@ function renderChords() {
     els.chordList.innerHTML = "";
     els.currentChord.textContent = "--";
     els.chordViewBar.textContent = "Bar 1";
+    updateAudioKeyStatus();
     return;
   }
 
@@ -255,6 +311,7 @@ function renderChordTimeline(container, duration, variant) {
     block.style.flexBasis = `${Math.max(3, ((segment.end - segment.start) / duration) * 100)}%`;
     block.title = `${chord} ${barLabel}`;
     block.addEventListener("click", () => seekAll(segment.start));
+    block.addEventListener("dblclick", () => editChordSegment(index));
     container.append(block);
   });
 }
@@ -276,8 +333,32 @@ function renderBarChart(duration) {
       <span>${index + 1}</span>
     `;
     item.addEventListener("click", () => seekAll(start));
+    item.addEventListener("dblclick", () => {
+      const segmentIndex = state.chords.findIndex((segment) => midpoint >= segment.start && midpoint < segment.end);
+      if (segmentIndex >= 0) editChordSegment(segmentIndex);
+    });
     els.chordList.append(item);
   }
+  updateLoopBarHighlights();
+}
+
+async function editChordSegment(index) {
+  if (!state.job || !state.chords[index]) return;
+  const current = state.chords[index].chord;
+  const next = window.prompt("Correct chord", current);
+  if (!next || next.trim() === current) return;
+  const response = await fetch(`/api/jobs/${encodeURIComponent(state.job.job_id)}/chords/${index}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chord: next.trim() }),
+  });
+  if (!response.ok) {
+    els.jobMeta.textContent = await response.text();
+    return;
+  }
+  const analysis = await response.json();
+  state.chords = analysis.segments || state.chords;
+  renderChords();
 }
 
 function renderTracks(job) {
@@ -316,11 +397,11 @@ function renderTracks(job) {
     row.innerHTML = `
       <div class="track-title">
         <span class="track-name"><span class="instrument-badge" aria-label="${TRACK_LABELS[name]}" title="${TRACK_LABELS[name]}">${TRACK_INSTRUMENTS[name] || "🎚️"}</span>${TRACK_LABELS[name]}</span>
-        <span class="track-status ${stem.status}">${stem.status}${modeLabel(name)}</span>
+        <span class="track-status ${stem.status}">${stem.status}</span>
       </div>
       <div class="wave-wrap"><canvas class="waveform" width="900" height="80"></canvas><span class="playhead"></span></div>
       <div class="track-controls">
-        <button class="track-button mute" type="button">M</button>
+        <button class="track-button mute" type="button">Mute</button>
         <button class="track-button solo" type="button">S</button>
         <input class="volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="${TRACK_LABELS[name]} volume" />
       </div>
@@ -336,7 +417,13 @@ function renderTracks(job) {
       solo: false,
       volume: 1,
       row,
+      sourceNode: null,
+      eqNodes: null,
+      reverbNodes: null,
+      compressionNode: null,
+      gainNode: null,
     };
+    ensureMixSettings(name);
     state.tracks.set(name, track);
 
     row.querySelector(".mute").addEventListener("click", () => {
@@ -358,29 +445,15 @@ function renderTracks(job) {
   }
 
   applyTrackMix();
+  renderEditMix();
+  renderPracticeMuteControls();
 }
 
 function audioUrl(jobId, trackName) {
-  if (trackName === "bass" && els.bassMode.value === "raw") {
-    return `/api/jobs/${encodeURIComponent(jobId)}/audio/stems_raw/bass.wav`;
-  }
-  if (trackName === "guitar" && els.guitarMode.value === "raw") {
-    return `/api/jobs/${encodeURIComponent(jobId)}/audio/stems_raw/guitar.wav`;
-  }
-  if (trackName === "keys" && els.keysMode.value === "focus") {
-    return `/api/jobs/${encodeURIComponent(jobId)}/audio/stems_focus/keys.wav`;
-  }
-  if (trackName === "keys" && els.keysMode.value === "rebuild") {
+  if (trackName === "keys") {
     return `/api/jobs/${encodeURIComponent(jobId)}/audio/stems_rebuild/keys.wav`;
   }
   return `/api/jobs/${encodeURIComponent(jobId)}/audio/stems/${trackName}.wav`;
-}
-
-function modeLabel(trackName) {
-  if (trackName === "bass") return ` - ${els.bassMode.value}`;
-  if (trackName === "guitar") return ` - ${els.guitarMode.value}`;
-  if (trackName === "keys") return ` - ${els.keysMode.value}`;
-  return "";
 }
 
 function getMaster() {
@@ -397,7 +470,11 @@ async function togglePlayback() {
   }
 
   await ensureTracksReady();
+  await ensureAudioGraph();
   const time = master.currentTime;
+  if (els.countInToggle.checked && !state.countInActive) {
+    await playCountIn();
+  }
   pauseAll(false);
   seekAll(time);
   syncTracksToMaster(time, 0);
@@ -407,6 +484,7 @@ async function togglePlayback() {
   state.playing = true;
   els.playButton.textContent = "Pause";
   startSyncLoop();
+  startOrStopClick();
 }
 
 function pauseAll(updateState = true) {
@@ -415,6 +493,7 @@ function pauseAll(updateState = true) {
     track.audio.playbackRate = state.playbackRate;
   }
   stopSyncLoop();
+  stopClick();
   if (updateState) {
     state.playing = false;
     els.playButton.textContent = "Play";
@@ -431,6 +510,7 @@ function seekAll(time) {
     setTrackTime(track, time);
   }
   updateTimeDisplay(time, getDuration());
+  applyTrackMix();
 }
 
 function syncFromMaster(event) {
@@ -441,6 +521,7 @@ function syncFromMaster(event) {
   if (duration > 0) {
     els.seekBar.value = String(Math.round((master.currentTime / duration) * 1000));
   }
+  applyTrackMix();
   syncTracksToMaster(master.currentTime, 0.08);
 }
 
@@ -454,6 +535,11 @@ function startSyncLoop() {
     if (duration > 0) {
       els.seekBar.value = String(Math.round((master.currentTime / duration) * 1000));
     }
+    if (state.loopMode === "regular" && hasActiveRange() && master.currentTime >= state.loopEnd) {
+      seekAll(state.loopStart);
+      return;
+    }
+    applyTrackMix();
     syncTracksToMaster(master.currentTime, 0.06);
   }, 180);
 }
@@ -507,10 +593,580 @@ async function ensureTracksReady() {
 
 function applyTrackMix() {
   const hasSolo = [...state.tracks.values()].some((track) => track.solo);
+  const masterTime = getMaster()?.currentTime || 0;
+  const inPracticeZone = state.loopMode === "practice" && isPracticeZoneActiveAt(masterTime);
   for (const track of state.tracks.values()) {
-    track.audio.muted = track.muted || (hasSolo && !track.solo);
-    track.audio.volume = track.volume;
+    const practiceMuted = inPracticeZone && state.practiceMuteTracks.has(track.name);
+    const audible = !(track.muted || practiceMuted || (hasSolo && !track.solo));
+    if (track.gainNode) {
+      track.audio.muted = false;
+      track.audio.volume = 1;
+      track.gainNode.gain.value = audible ? track.volume : 0;
+    } else {
+      track.audio.muted = !audible;
+      track.audio.volume = track.volume;
+    }
   }
+}
+
+function toggleTrackMute(trackName) {
+  const track = state.tracks.get(trackName);
+  if (!track) return;
+  track.muted = !track.muted;
+  track.row.querySelector(".mute")?.classList.toggle("active", track.muted);
+  applyTrackMix();
+  renderEditMix();
+}
+
+async function ensureAudioGraph() {
+  if (!state.audioContext) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+      els.mixStatus.textContent = "EQ unavailable in this browser";
+      return;
+    }
+    state.audioContext = new AudioContextClass();
+    state.masterInput = state.audioContext.createGain();
+    state.masterCompressor = state.audioContext.createDynamicsCompressor();
+    state.masterCompressor.threshold.value = -18;
+    state.masterCompressor.knee.value = 18;
+    state.masterCompressor.ratio.value = 3.2;
+    state.masterCompressor.attack.value = 0.006;
+    state.masterCompressor.release.value = 0.18;
+    state.masterGain = state.audioContext.createGain();
+    state.masterGain.gain.value = 0.92;
+    rebuildMasterChain();
+  }
+
+  if (state.audioContext.state === "suspended") {
+    await state.audioContext.resume();
+  }
+
+  for (const track of state.tracks.values()) {
+    connectTrackGraph(track);
+  }
+  applyEqToAllTracks();
+  applyTrackMix();
+  updateMixStatus();
+}
+
+function connectTrackGraph(track) {
+  if (!state.audioContext || track.sourceNode) return;
+  track.sourceNode = state.audioContext.createMediaElementSource(track.audio);
+  const low = state.audioContext.createBiquadFilter();
+  const mid = state.audioContext.createBiquadFilter();
+  const high = state.audioContext.createBiquadFilter();
+  const dryGain = state.audioContext.createGain();
+  const convolver = state.audioContext.createConvolver();
+  const wetGain = state.audioContext.createGain();
+  const compressor = state.audioContext.createDynamicsCompressor();
+  const gain = state.audioContext.createGain();
+
+  const filters = { low, mid, high };
+  for (const band of EQ_BANDS) {
+    filters[band.key].type = band.type;
+    filters[band.key].frequency.value = band.frequency;
+    filters[band.key].Q.value = band.q;
+  }
+
+  track.sourceNode.connect(low);
+  low.connect(mid);
+  mid.connect(high);
+  high.connect(dryGain);
+  high.connect(convolver);
+  convolver.connect(wetGain);
+  dryGain.connect(gain);
+  wetGain.connect(gain);
+  gain.connect(compressor);
+  compressor.connect(state.masterInput);
+  track.eqNodes = filters;
+  track.reverbNodes = { dryGain, convolver, wetGain };
+  track.compressionNode = compressor;
+  track.gainNode = gain;
+  applyEqToTrack(track);
+}
+
+function rebuildMasterChain() {
+  if (!state.masterInput || !state.masterGain || !state.audioContext) return;
+  try {
+    state.masterInput.disconnect();
+    state.masterCompressor.disconnect();
+    state.masterGain.disconnect();
+  } catch {
+    // Nodes may not be connected yet.
+  }
+
+  if (state.hdMaster) {
+    state.masterInput.connect(state.masterCompressor);
+    state.masterCompressor.connect(state.masterGain);
+  } else {
+    state.masterInput.connect(state.masterGain);
+  }
+  state.masterGain.connect(state.audioContext.destination);
+}
+
+function ensureMixSettings(trackName) {
+  if (!state.mixSettings.has(trackName)) {
+    state.mixSettings.set(trackName, { ...(MIX_PRESETS[trackName] || neutralMixSettings()) });
+  }
+  return state.mixSettings.get(trackName);
+}
+
+function neutralMixSettings() {
+  return { low: 0, mid: 0, high: 0, reverb: 50, compression: 50 };
+}
+
+function applyEqToAllTracks() {
+  for (const track of state.tracks.values()) {
+    applyEqToTrack(track);
+  }
+}
+
+function applyEqToTrack(track) {
+  const settings = ensureMixSettings(track.name);
+  if (track.eqNodes) {
+    for (const band of EQ_BANDS) {
+      track.eqNodes[band.key].gain.value = Number(settings[band.key]) || 0;
+    }
+  }
+  if (track.reverbNodes) {
+    track.reverbNodes.convolver.buffer = state.reverbImpulse || createReverbImpulse();
+    const wet = Math.max(0, Math.min(0.7, ((Number(settings.reverb) || 50) - 50) / 50 * 0.7));
+    track.reverbNodes.wetGain.gain.value = wet;
+    track.reverbNodes.dryGain.gain.value = Math.max(0.45, 1 - wet * 0.55);
+  }
+  if (track.compressionNode) {
+    const amount = Math.max(0, Math.min(1, ((Number(settings.compression) || 50) - 50) / 50));
+    track.compressionNode.threshold.value = -8 - amount * 28;
+    track.compressionNode.knee.value = 24 - amount * 12;
+    track.compressionNode.ratio.value = 1 + amount * 7;
+    track.compressionNode.attack.value = 0.004 + amount * 0.006;
+    track.compressionNode.release.value = 0.22 - amount * 0.12;
+  }
+}
+
+function setEqValue(trackName, bandKey, value) {
+  const settings = ensureMixSettings(trackName);
+  settings[bandKey] = ["reverb", "compression"].includes(bandKey)
+    ? Math.max(0, Math.min(100, Number(value) || 50))
+    : Math.max(-12, Math.min(12, Number(value) || 0));
+  const track = state.tracks.get(trackName);
+  if (track) applyEqToTrack(track);
+}
+
+function resetEq(trackName) {
+  state.mixSettings.set(trackName, neutralMixSettings());
+  const track = state.tracks.get(trackName);
+  if (track) applyEqToTrack(track);
+  renderEditMix();
+}
+
+function applyPreset(trackName) {
+  state.mixSettings.set(trackName, { ...(MIX_PRESETS[trackName] || neutralMixSettings()) });
+  const track = state.tracks.get(trackName);
+  if (track) applyEqToTrack(track);
+  renderEditMix();
+}
+
+function toggleHdMaster() {
+  state.hdMaster = !state.hdMaster;
+  rebuildMasterChain();
+  updateMixStatus();
+}
+
+function updateMixStatus() {
+  els.hdMasterButton.textContent = state.hdMaster ? "On" : "Off";
+  els.hdMasterButton.setAttribute("aria-pressed", String(state.hdMaster));
+  els.hdMasterButton.classList.toggle("active", state.hdMaster);
+  els.mixStatus.textContent = state.hdMaster
+    ? "Live HD master chain active"
+    : "Live browser mix";
+}
+
+async function loadMixSettings() {
+  if (!state.job) return;
+  try {
+    const response = await fetch(`/api/jobs/${encodeURIComponent(state.job.job_id)}/mix-settings`);
+    if (!response.ok) return;
+    const data = await response.json();
+    const settings = data.settings || {};
+    state.hdMaster = Boolean(settings.hdMaster);
+    state.playbackRate = Number(settings.playbackRate) || state.playbackRate;
+    els.tempoSlider.value = String(Math.round(state.playbackRate * 100));
+    for (const [trackName, trackSettings] of Object.entries(settings.tracks || {})) {
+      state.mixSettings.set(trackName, {
+        ...ensureMixSettings(trackName),
+        ...trackSettings,
+      });
+      const track = state.tracks.get(trackName);
+      if (track) {
+        track.volume = Number(trackSettings.volume ?? track.volume);
+        track.muted = Boolean(trackSettings.muted);
+        track.solo = Boolean(trackSettings.solo);
+        track.row.querySelector(".volume").value = String(track.volume);
+        track.row.querySelector(".mute").classList.toggle("active", track.muted);
+        track.row.querySelector(".solo").classList.toggle("active", track.solo);
+      }
+    }
+    const practiceZone = settings.practiceZone || {};
+    state.loopStart = parseOptionalTime(practiceZone.start);
+    state.loopEnd = parseOptionalTime(practiceZone.end);
+    state.loopMode = ["regular", "practice"].includes(practiceZone.mode) ? practiceZone.mode : "regular";
+    els.loopModeSelect.value = state.loopMode;
+    state.practiceMuteTracks = new Set((practiceZone.muteTracks || []).filter((name) => TRACK_ORDER.includes(name)));
+    applyEqToAllTracks();
+    applyTrackMix();
+    updateMixStatus();
+    updateLoopStatus();
+    renderPracticeMuteControls();
+    updateTempoReadout();
+  } catch {
+    // Saved mix settings are optional.
+  }
+}
+
+async function saveMixSettings() {
+  if (!state.job) return;
+  const response = await fetch(`/api/jobs/${encodeURIComponent(state.job.job_id)}/mix-settings`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ settings: serializeMixSettings() }),
+  });
+  els.mixStatus.textContent = response.ok ? "Mix saved" : "Could not save mix";
+}
+
+function serializeMixSettings() {
+  const tracks = {};
+  for (const track of state.tracks.values()) {
+    tracks[track.name] = {
+      ...ensureMixSettings(track.name),
+      volume: track.volume,
+      muted: track.muted,
+      solo: track.solo,
+    };
+  }
+  return {
+    hdMaster: state.hdMaster,
+    playbackRate: state.playbackRate,
+    practiceZone: {
+      mode: state.loopMode,
+      start: state.loopStart,
+      end: state.loopEnd,
+      muteTracks: [...state.practiceMuteTracks],
+    },
+    tracks,
+  };
+}
+
+async function renderHdMix() {
+  if (!state.job) return;
+  els.hdExportButton.disabled = true;
+  els.hdExportButton.textContent = "Rendering...";
+  const format = els.exportFormat.value;
+  const preset = els.exportPreset.value;
+  els.mixStatus.textContent = preset === "stems_zip" ? "Preparing stems ZIP..." : `Rendering ${format.toUpperCase()}...`;
+  try {
+    const response = await fetch(`/api/jobs/${encodeURIComponent(state.job.job_id)}/exports/hd-mix`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildHdMixPayload()),
+    });
+    if (!response.ok) {
+      els.mixStatus.textContent = await response.text();
+      return;
+    }
+    const result = await response.json();
+    els.mixStatus.innerHTML = `<a href="${escapeHtml(result.url)}" download>${escapeHtml(result.filename)}</a>`;
+  } catch {
+    els.mixStatus.textContent = "HD render failed.";
+  } finally {
+    els.hdExportButton.disabled = false;
+    els.hdExportButton.textContent = "Render WAV";
+  }
+}
+
+function buildHdMixPayload() {
+  const hasSolo = [...state.tracks.values()].some((track) => track.solo);
+  const tracks = {};
+  for (const track of state.tracks.values()) {
+    const eq = ensureMixSettings(track.name);
+    tracks[track.name] = {
+      volume: track.volume,
+      muted: track.muted || (hasSolo && !track.solo),
+      low: eq.low,
+      mid: eq.mid,
+      high: eq.high,
+      reverb: eq.reverb,
+      compression: eq.compression,
+    };
+  }
+  return {
+    hd_master: state.hdMaster,
+    semitones: transposeSemitones(),
+    format: els.exportFormat.value,
+    preset: els.exportPreset.value,
+    tracks,
+  };
+}
+
+async function renderShiftedMix() {
+  if (!state.job) return;
+  const previousPreset = els.exportPreset.value;
+  const previousFormat = els.exportFormat.value;
+  els.exportPreset.value = "full";
+  els.exportFormat.value = "wav";
+  await renderHdMix();
+  els.exportPreset.value = previousPreset;
+  els.exportFormat.value = previousFormat;
+}
+
+function renderEditMix() {
+  if (!els.editMixDeck) return;
+  updateMixStatus();
+  updateLoopStatus();
+  renderPracticeMuteControls();
+  els.editMixDeck.innerHTML = "";
+  if (!state.job || !state.tracks.size) {
+    els.editMixDeck.innerHTML = '<div class="empty">No separated songs yet.</div>';
+    return;
+  }
+
+  for (const name of TRACK_ORDER) {
+    const track = state.tracks.get(name);
+    if (!track) continue;
+    const settings = ensureMixSettings(name);
+    const strip = document.createElement("article");
+    strip.className = "mix-strip";
+    strip.innerHTML = `
+      <div class="mix-strip-title">
+        <span class="instrument-badge" aria-label="${TRACK_LABELS[name]}" title="${TRACK_LABELS[name]}">${TRACK_INSTRUMENTS[name] || "🎚️"}</span>
+        <strong>${TRACK_LABELS[name]}</strong>
+      </div>
+      <div class="eq-bank">
+        ${EQ_BANDS.map((band) => `
+          <label class="eq-control">
+            <span>${band.label}</span>
+            <input type="range" min="-12" max="12" step="1" value="${settings[band.key]}" data-track="${name}" data-band="${band.key}" />
+            <strong>${formatDb(settings[band.key])}</strong>
+          </label>
+        `).join("")}
+        <label class="eq-control reverb-control">
+          <span>Verb</span>
+          <input type="range" min="0" max="100" step="1" value="${settings.reverb ?? 50}" data-track="${name}" data-band="reverb" />
+          <strong>${formatPercent(settings.reverb ?? 50)}</strong>
+        </label>
+        <label class="eq-control compression-control">
+          <span>Comp</span>
+          <input type="range" min="0" max="100" step="1" value="${settings.compression ?? 50}" data-track="${name}" data-band="compression" />
+          <strong>${formatPercent(settings.compression ?? 50)}</strong>
+        </label>
+      </div>
+      <div class="mix-actions">
+        <button class="track-button mix-mute-button ${track.muted ? "active" : ""}" type="button" data-mix-mute="${name}">Mute</button>
+        <button class="secondary-button preset-button" type="button" data-preset="${name}">Preset</button>
+        <button class="secondary-button reset-eq-button" type="button" data-reset="${name}">Flat</button>
+      </div>
+    `;
+    els.editMixDeck.append(strip);
+  }
+
+  els.editMixDeck.querySelectorAll("[data-track][data-band]").forEach((slider) => {
+    slider.addEventListener("input", (event) => {
+      setEqValue(event.target.dataset.track, event.target.dataset.band, event.target.value);
+      const valueText = ["reverb", "compression"].includes(event.target.dataset.band)
+        ? formatPercent(event.target.value)
+        : formatDb(event.target.value);
+      event.target.closest(".eq-control")?.querySelector("strong").replaceChildren(valueText);
+    });
+  });
+  els.editMixDeck.querySelectorAll("[data-mix-mute]").forEach((button) => {
+    button.addEventListener("click", () => toggleTrackMute(button.dataset.mixMute));
+  });
+  els.editMixDeck.querySelectorAll("[data-preset]").forEach((button) => {
+    button.addEventListener("click", () => applyPreset(button.dataset.preset));
+  });
+  els.editMixDeck.querySelectorAll("[data-reset]").forEach((button) => {
+    button.addEventListener("click", () => resetEq(button.dataset.reset));
+  });
+}
+
+function renderPracticeMuteControls() {
+  if (!els.practiceMuteList) return;
+  els.practiceMuteList.innerHTML = "";
+  if (!state.job || !state.tracks.size) {
+    els.practiceMuteList.innerHTML = '<span class="practice-zone-empty">Split a song first.</span>';
+    return;
+  }
+  for (const name of TRACK_ORDER) {
+    if (!state.tracks.has(name)) continue;
+    const button = document.createElement("button");
+    const active = state.practiceMuteTracks.has(name);
+    button.className = `practice-mute-chip ${active ? "active" : ""}`;
+    button.type = "button";
+    button.setAttribute("aria-pressed", String(active));
+    button.innerHTML = `
+      <span class="instrument-badge" aria-label="${TRACK_LABELS[name]}" title="${TRACK_LABELS[name]}">${TRACK_INSTRUMENTS[name] || "🎚️"}</span>
+      <strong>${TRACK_LABELS[name]}</strong>
+    `;
+    button.addEventListener("click", () => {
+      if (state.practiceMuteTracks.has(name)) {
+        state.practiceMuteTracks.delete(name);
+      } else {
+        state.practiceMuteTracks.add(name);
+      }
+      applyTrackMix();
+      renderPracticeMuteControls();
+    });
+    els.practiceMuteList.append(button);
+  }
+}
+
+function parseOptionalTime(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatDb(value) {
+  const db = Number(value) || 0;
+  if (db === 0) return "0 dB";
+  return `${db > 0 ? "+" : ""}${db} dB`;
+}
+
+function formatPercent(value) {
+  return `${Math.round(Number(value) || 0)}%`;
+}
+
+function setLoopStart() {
+  state.loopStart = getMaster()?.currentTime || 0;
+  if (state.loopEnd !== null && state.loopEnd <= state.loopStart) state.loopEnd = null;
+  updateLoopStatus();
+}
+
+function setLoopEnd() {
+  state.loopEnd = getMaster()?.currentTime || 0;
+  if (state.loopStart === null || state.loopStart >= state.loopEnd) {
+    state.loopStart = 0;
+  }
+  updateLoopStatus();
+}
+
+function clearLoop() {
+  state.loopStart = null;
+  state.loopEnd = null;
+  updateLoopStatus();
+  applyTrackMix();
+}
+
+function updateLoopStatus() {
+  const running = hasActiveRange();
+  const isPractice = state.loopMode === "practice";
+  const activeLabel = isPractice ? "Practice Zone Active" : "Loop Running";
+  const offLabel = isPractice ? "Practice Zone off" : "Loop off";
+  const text = running
+    ? `${activeLabel} ${formatTime(state.loopStart)} - ${formatTime(state.loopEnd)}`
+    : offLabel;
+  for (const node of [els.loopStatus, els.globalLoopStatus]) {
+    if (!node) continue;
+    node.classList.toggle("loop-running", running);
+    node.textContent = text;
+  }
+  updateLoopBarHighlights();
+}
+
+function setLoopMode(mode) {
+  state.loopMode = mode === "practice" ? "practice" : "regular";
+  els.loopModeSelect.value = state.loopMode;
+  updateLoopStatus();
+  applyTrackMix();
+  renderPracticeMuteControls();
+}
+
+function hasActiveRange() {
+  return state.loopStart !== null && state.loopEnd !== null;
+}
+
+function isPracticeZoneActiveAt(time) {
+  return hasActiveRange()
+    && time >= state.loopStart
+    && time < state.loopEnd;
+}
+
+function updateLoopBarHighlights() {
+  const running = hasActiveRange();
+  const tempo = state.tempo || normalizeTempo(null);
+  document.querySelectorAll("[data-bar-index]").forEach((node) => {
+    const index = Number(node.dataset.barIndex);
+    const barStart = index * tempo.secondsPerBar;
+    const barEnd = barStart + tempo.secondsPerBar;
+    const inLoop = running && barEnd > state.loopStart && barStart < state.loopEnd;
+    node.classList.toggle("loop-range", inLoop);
+  });
+}
+
+async function playCountIn() {
+  state.countInActive = true;
+  const beats = 4;
+  const interval = (60 / (state.tempo?.bpm || 120)) * 1000;
+  for (let beat = 0; beat < beats; beat += 1) {
+    playClick(beat === 0 ? 1320 : 920);
+    await new Promise((resolve) => window.setTimeout(resolve, interval));
+  }
+  state.countInActive = false;
+}
+
+function startOrStopClick() {
+  stopClick();
+  if (!els.metronomeToggle.checked || !state.playing) return;
+  const interval = (60 / (state.tempo?.bpm || 120)) * 1000 / state.playbackRate;
+  playClick(1100);
+  state.clickTimer = window.setInterval(() => {
+    if (!state.playing || getMaster()?.paused || !els.metronomeToggle.checked) {
+      stopClick();
+      return;
+    }
+    playClick(880);
+  }, interval);
+}
+
+function stopClick() {
+  if (state.clickTimer) {
+    window.clearInterval(state.clickTimer);
+    state.clickTimer = null;
+  }
+}
+
+function playClick(frequency) {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  const context = state.audioContext || (AudioContextClass ? new AudioContextClass() : null);
+  if (!context) return;
+  if (!state.audioContext) state.audioContext = context;
+  const osc = context.createOscillator();
+  const gain = context.createGain();
+  osc.frequency.value = frequency;
+  gain.gain.setValueAtTime(0.0001, context.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.38, context.currentTime + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.08);
+  osc.connect(gain);
+  gain.connect(context.destination);
+  osc.start();
+  osc.stop(context.currentTime + 0.09);
+}
+
+function createReverbImpulse() {
+  if (state.reverbImpulse || !state.audioContext) return state.reverbImpulse;
+  const sampleRate = state.audioContext.sampleRate;
+  const length = Math.round(sampleRate * 1.6);
+  const impulse = state.audioContext.createBuffer(2, length, sampleRate);
+  for (let channel = 0; channel < impulse.numberOfChannels; channel += 1) {
+    const data = impulse.getChannelData(channel);
+    for (let index = 0; index < length; index += 1) {
+      const decay = Math.pow(1 - index / length, 2.4);
+      data[index] = (Math.random() * 2 - 1) * decay;
+    }
+  }
+  state.reverbImpulse = impulse;
+  return impulse;
 }
 
 function setPlaybackRate(rate) {
@@ -523,6 +1179,7 @@ function setPlaybackRate(rate) {
     track.audio.webkitPreservesPitch = true;
   }
   updateTempoReadout();
+  if (state.playing) startOrStopClick();
 }
 
 function getDuration() {
@@ -576,13 +1233,15 @@ function updateChordHighlight(time, forceScroll) {
 }
 
 function setActiveView(view) {
-  state.activeView = ["chord", "key"].includes(view) ? view : "track";
+  state.activeView = ["chord", "key", "edit"].includes(view) ? view : "track";
   els.tabs.forEach((tab) => {
     tab.classList.toggle("active", tab.dataset.view === state.activeView);
   });
   els.trackView.classList.toggle("active", state.activeView === "track");
   els.chordView.classList.toggle("active", state.activeView === "chord");
   els.keyView.classList.toggle("active", state.activeView === "key");
+  els.editMixView.classList.toggle("active", state.activeView === "edit");
+  if (state.activeView === "edit") renderEditMix();
   updateChordHighlight(getMaster()?.currentTime || 0, true);
 }
 
@@ -628,6 +1287,7 @@ function renderKeyOptions() {
 function setTargetKey(key) {
   state.targetKey = KEY_OPTIONS.includes(key) ? key : state.detectedKey;
   updateKeyReadout();
+  updateAudioKeyStatus();
   renderChords();
 }
 
@@ -640,6 +1300,14 @@ function updateKeyReadout() {
   els.transposeSummary.textContent = semitones === 0
     ? `Showing original key: ${detected}`
     : `Showing ${target}, transposed ${formatSemitones(semitones)} from ${detected}`;
+}
+
+function updateAudioKeyStatus() {
+  if (!els.audioKeyStatus) return;
+  const semitones = transposeSemitones();
+  els.audioKeyStatus.textContent = semitones === 0
+    ? "Tracks are playing in the original recorded key."
+    : `Chart is transposed ${formatSemitones(semitones)}; audio is still original until shifted tracks are rendered.`;
 }
 
 function detectSongKey(chords) {

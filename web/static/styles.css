@@ -271,7 +271,7 @@ p {
   top: 0;
   z-index: 2;
   display: grid;
-  grid-template-columns: 96px 48px auto minmax(180px, 1fr) minmax(330px, auto) 210px;
+  grid-template-columns: 96px 48px auto minmax(180px, 1fr) 210px minmax(170px, auto) minmax(150px, auto);
   gap: 12px;
   align-items: center;
   min-height: 76px;
@@ -280,15 +280,37 @@ p {
   background: rgba(10, 7, 7, 0.97);
 }
 
-.stem-mode-group {
+.practice-toggles {
   display: flex;
   gap: 10px;
-  align-items: center;
   justify-content: flex-end;
-  padding: 8px 10px;
-  border: 1px solid rgba(255, 64, 89, 0.18);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.practice-toggles label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.global-loop-status {
+  justify-self: end;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.global-loop-status.loop-running {
+  border: 1px solid rgba(43, 214, 117, 0.42);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(43, 214, 117, 0.14);
+  color: #65f29a;
+  box-shadow: 0 0 22px rgba(43, 214, 117, 0.18);
 }
 
 .transport-button {
@@ -313,17 +335,6 @@ p {
 .seek {
   width: 100%;
   accent-color: var(--accent);
-}
-
-.bass-mode,
-.guitar-mode,
-.keys-mode {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: flex-end;
-  color: var(--muted);
-  font-size: 13px;
 }
 
 .tempo-mode {
@@ -480,7 +491,7 @@ p {
 
 .key-view.active {
   display: grid;
-  grid-template-rows: auto auto;
+  grid-template-rows: auto auto auto;
   gap: 18px;
   align-content: start;
 }
@@ -529,6 +540,255 @@ p {
 #transposeSummary {
   color: var(--text);
   font-weight: 800;
+}
+
+.key-audio-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid rgba(255, 176, 0, 0.24);
+  border-radius: 8px;
+  padding: 16px;
+  background: rgba(255, 176, 0, 0.06);
+  color: var(--muted);
+}
+
+.key-audio-note .primary-button {
+  min-width: 170px;
+}
+
+.key-audio-note strong {
+  color: var(--stage);
+}
+
+.edit-mix-view {
+  min-height: calc(100vh - 135px);
+  padding: 22px;
+  background:
+    linear-gradient(180deg, rgba(229, 9, 20, 0.12), transparent 28%),
+    #090707;
+}
+
+.edit-mix-view.active {
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+  gap: 18px;
+}
+
+.mix-console {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 112px 140px minmax(180px, auto);
+  gap: 18px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 20px;
+  background:
+    linear-gradient(135deg, rgba(229, 9, 20, 0.24), transparent 46%),
+    var(--panel);
+}
+
+.mix-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(20, 17, 17, 0.78);
+}
+
+.toolbar-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.practice-zone-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) 1fr;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid rgba(43, 214, 117, 0.28);
+  border-radius: 8px;
+  padding: 14px;
+  background:
+    linear-gradient(135deg, rgba(43, 214, 117, 0.14), transparent 46%),
+    rgba(20, 17, 17, 0.84);
+}
+
+.practice-zone-panel strong {
+  display: block;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.practice-mute-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+}
+
+.practice-mute-chip {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: #100b0b;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 900;
+  text-align: left;
+}
+
+.practice-mute-chip .instrument-badge {
+  width: 32px;
+  height: 32px;
+  font-size: 17px;
+}
+
+.practice-mute-chip.active {
+  border-color: transparent;
+  background: linear-gradient(135deg, #2bd675, #0e5c2f);
+  color: #06140b;
+  box-shadow: 0 0 22px rgba(43, 214, 117, 0.2);
+}
+
+.practice-mute-chip.active .instrument-badge {
+  border-color: rgba(6, 20, 11, 0.26);
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow: none;
+}
+
+.practice-zone-empty {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.mix-console strong {
+  display: block;
+  font-size: 42px;
+  line-height: 1;
+}
+
+.master-button {
+  min-height: 52px;
+  border: 1px solid rgba(255, 61, 79, 0.38);
+  border-radius: 8px;
+  background: #110b0b;
+  color: var(--muted);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.master-button.active {
+  border-color: transparent;
+  background: linear-gradient(135deg, #ff4059, #a60010);
+  color: #fff5f5;
+  box-shadow: 0 0 28px rgba(229, 9, 20, 0.34);
+}
+
+.mix-status {
+  color: var(--muted);
+  font-weight: 800;
+  text-align: right;
+}
+
+.mix-status.loop-running {
+  justify-self: end;
+  border: 1px solid rgba(43, 214, 117, 0.42);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(43, 214, 117, 0.14);
+  color: #65f29a;
+  box-shadow: 0 0 22px rgba(43, 214, 117, 0.18);
+}
+
+.mix-status a {
+  color: var(--stage);
+  text-decoration: none;
+}
+
+.export-button {
+  min-height: 52px;
+}
+
+.edit-mix-deck {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+
+.mix-strip {
+  display: grid;
+  grid-template-columns: 170px 1fr 128px;
+  gap: 14px;
+  align-items: center;
+  min-height: 118px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background:
+    linear-gradient(90deg, rgba(255, 64, 89, 0.09), transparent 50%),
+    var(--panel);
+}
+
+.mix-strip-title {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.mix-strip-title strong {
+  overflow-wrap: anywhere;
+}
+
+.eq-bank {
+  display: grid;
+  gap: 8px;
+}
+
+.eq-control {
+  display: grid;
+  grid-template-columns: 42px 1fr 54px;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.eq-control input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.eq-control strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.mix-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.preset-button,
+.reset-eq-button {
+  min-height: 34px;
 }
 
 .chord-stage {
@@ -640,6 +900,20 @@ p {
   box-shadow: 0 0 30px rgba(229, 9, 20, 0.28);
 }
 
+.bar-card.loop-range {
+  border-color: rgba(43, 214, 117, 0.48);
+  background:
+    linear-gradient(135deg, rgba(43, 214, 117, 0.34), rgba(14, 92, 47, 0.3)),
+    var(--panel);
+  color: #eaffef;
+  box-shadow: inset 0 0 0 1px rgba(43, 214, 117, 0.12);
+}
+
+.bar-card.loop-range span {
+  border-color: rgba(101, 242, 154, 0.42);
+  color: #9dffbf;
+}
+
 .bar-card.active span {
   border-color: rgba(255, 255, 255, 0.34);
   color: rgba(255, 245, 245, 0.72);
@@ -727,13 +1001,15 @@ p {
 
 .track-controls {
   display: grid;
-  grid-template-columns: repeat(2, 42px) 1fr;
+  grid-template-columns: repeat(2, 62px) 1fr;
   gap: 8px;
   align-items: center;
 }
 
 .track-button {
   height: 34px;
+  min-width: 54px;
+  padding: 0 10px;
   font-weight: 800;
 }
 
@@ -778,17 +1054,10 @@ audio {
 
   .time-readout,
   .seek,
-  .stem-mode-group,
-  .bass-mode,
-  .guitar-mode,
-  .keys-mode,
-  .tempo-mode {
+  .tempo-mode,
+  .practice-toggles,
+  .global-loop-status {
     grid-column: 1 / -1;
-  }
-
-  .stem-mode-group {
-    flex-wrap: wrap;
-    justify-content: flex-start;
   }
 
   .tempo-mode {
@@ -836,6 +1105,23 @@ audio {
   .key-summary {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .key-audio-note {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .mix-console,
+  .mix-toolbar,
+  .practice-zone-panel,
+  .mix-strip,
+  .edit-mix-deck {
+    grid-template-columns: 1fr;
+  }
+
+  .mix-status {
+    text-align: left;
   }
 
   .stage-time {

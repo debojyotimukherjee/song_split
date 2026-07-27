@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Weekend Stems</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260727-single-guitar" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260727-practice-zone" />
   </head>
   <body>
     <main class="app-shell">
@@ -63,41 +63,23 @@
             <span id="duration">0:00</span>
           </div>
           <input id="seekBar" class="seek" type="range" min="0" max="1000" value="0" aria-label="Seek" />
-          <div class="stem-mode-group" aria-label="Stem options">
-            <label class="bass-mode">
-              Bass
-              <select id="bassMode" class="select compact">
-                <option value="clean">Clean</option>
-                <option value="raw">Raw</option>
-              </select>
-            </label>
-            <label class="guitar-mode">
-              Guitar
-              <select id="guitarMode" class="select compact">
-                <option value="clean">Clean</option>
-                <option value="raw">Raw</option>
-              </select>
-            </label>
-            <label class="keys-mode">
-              Keys
-              <select id="keysMode" class="select compact">
-                <option value="direct">Direct</option>
-                <option value="focus">Focus</option>
-                <option value="rebuild">Rebuild</option>
-              </select>
-            </label>
-          </div>
           <label class="tempo-mode">
             Tempo
             <input id="tempoSlider" class="tempo-slider" type="range" min="50" max="125" step="1" value="100" />
             <span id="tempoValue">100%</span>
           </label>
+          <div class="practice-toggles" aria-label="Practice playback options">
+            <label><input id="countInToggle" type="checkbox" /> Count-in</label>
+            <label><input id="metronomeToggle" type="checkbox" /> Click</label>
+          </div>
+          <span id="globalLoopStatus" class="global-loop-status">Loop off</span>
         </header>
 
         <nav class="view-tabs" aria-label="Mixer views">
           <button id="trackTab" class="view-tab active" type="button" data-view="track">Track View</button>
           <button id="chordTab" class="view-tab" type="button" data-view="chord">Chord View</button>
           <button id="keyTab" class="view-tab" type="button" data-view="key">Song Key</button>
+          <button id="editMixTab" class="view-tab" type="button" data-view="edit">Edit Mix</button>
         </nav>
 
         <section id="trackView" class="view-panel active" aria-label="Track view">
@@ -141,10 +123,66 @@
             <span id="transposeSummary">No transposition</span>
             <button id="resetKeyButton" class="secondary-button" type="button">Reset to original key</button>
           </div>
+          <div class="key-audio-note">
+            <strong>Audio Key</strong>
+            <span id="audioKeyStatus">Tracks are playing in the original recorded key.</span>
+            <button id="renderShiftedButton" class="primary-button" type="button">Render shifted mix</button>
+          </div>
+        </section>
+
+        <section id="editMixView" class="view-panel edit-mix-view" aria-label="Edit mix view">
+          <div class="mix-console">
+            <div>
+              <span class="stage-label">Master</span>
+              <strong>HD Mix</strong>
+            </div>
+            <button id="hdMasterButton" class="master-button" type="button" aria-pressed="false">Off</button>
+            <button id="hdExportButton" class="primary-button export-button" type="button">Render WAV</button>
+            <span id="mixStatus" class="mix-status">Live browser mix</span>
+          </div>
+          <div class="mix-toolbar">
+            <button id="saveMixButton" class="secondary-button" type="button">Save Mix</button>
+            <label class="toolbar-field">
+              Export
+              <select id="exportPreset" class="select compact">
+                <option value="full">Full Mix</option>
+                <option value="minus_vocals">Minus Vocals</option>
+                <option value="minus_guitar">Minus Guitar</option>
+                <option value="minus_keys">Minus Keys</option>
+                <option value="stems_zip">Stems ZIP</option>
+              </select>
+            </label>
+            <label class="toolbar-field">
+              Format
+              <select id="exportFormat" class="select compact">
+                <option value="wav">WAV 24-bit</option>
+                <option value="mp3">MP3 320k</option>
+              </select>
+            </label>
+            <label class="toolbar-field">
+              Range Mode
+              <select id="loopModeSelect" class="select compact">
+                <option value="regular">Regular Loop</option>
+                <option value="practice">Practice Zone</option>
+              </select>
+            </label>
+            <button id="setLoopStartButton" class="secondary-button" type="button">Start Range</button>
+            <button id="setLoopEndButton" class="secondary-button" type="button">End Range</button>
+            <button id="clearLoopButton" class="secondary-button" type="button">Clear Range</button>
+            <span id="loopStatus" class="mix-status">Loop off</span>
+          </div>
+          <div class="practice-zone-panel">
+            <div>
+              <span class="stage-label">Practice Zone Mute</span>
+              <strong>Mute only inside the selected zone</strong>
+            </div>
+            <div id="practiceMuteList" class="practice-mute-list"></div>
+          </div>
+          <div id="editMixDeck" class="edit-mix-deck"></div>
         </section>
       </section>
     </main>
 
-    <script src="/static/app.js?v=20260727-single-guitar"></script>
+    <script src="/static/app.js?v=20260727-practice-zone"></script>
   </body>
 </html>
