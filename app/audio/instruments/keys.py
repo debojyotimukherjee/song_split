@@ -3,9 +3,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-
-FOCUS_STEMS_DIR = "stems_focus"
-REBUILD_STEMS_DIR = "stems_rebuild"
+from app.audio.instruments.common import FOCUS_STEMS_DIR, REBUILD_STEMS_DIR, run_ffmpeg_filter
 
 
 def create_keys_focus_stem(job_dir: Path) -> bool:
@@ -30,7 +28,7 @@ def create_keys_focus_stem(job_dir: Path) -> bool:
             "alimiter=limit=0.98",
         ]
     )
-    _run_ffmpeg_filter(piano_file, output_dir / "keys.wav", keys_filter)
+    run_ffmpeg_filter(piano_file, output_dir / "keys.wav", keys_filter)
     return True
 
 
@@ -46,7 +44,7 @@ def create_keys_rebuild_stem(job_dir: Path) -> bool:
     output_file = output_dir / "keys.wav"
 
     if not other_file.exists():
-        _run_ffmpeg_filter(piano_file, output_file, _keys_rebuild_single_filter())
+        run_ffmpeg_filter(piano_file, output_file, _keys_rebuild_single_filter())
         return True
 
     command = [
@@ -120,19 +118,3 @@ def _keys_rebuild_mix_filter() -> str:
         "dynaudnorm=f=120:g=10:p=0.58,"
         "alimiter=limit=0.98[out]"
     )
-
-
-def _run_ffmpeg_filter(source_file: Path, output_file: Path, audio_filter: str) -> None:
-    command = [
-        "ffmpeg",
-        "-y",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-i",
-        str(source_file),
-        "-af",
-        audio_filter,
-        str(output_file),
-    ]
-    subprocess.run(command, check=True)
