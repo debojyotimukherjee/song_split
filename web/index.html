@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Weekend Stems</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260727-edit-mix-reverb" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260727-practice-tools" />
   </head>
   <body>
     <main class="app-shell">
@@ -68,6 +68,10 @@
             <input id="tempoSlider" class="tempo-slider" type="range" min="50" max="125" step="1" value="100" />
             <span id="tempoValue">100%</span>
           </label>
+          <div class="practice-toggles" aria-label="Practice playback options">
+            <label><input id="countInToggle" type="checkbox" /> Count-in</label>
+            <label><input id="metronomeToggle" type="checkbox" /> Click</label>
+          </div>
         </header>
 
         <nav class="view-tabs" aria-label="Mixer views">
@@ -121,6 +125,7 @@
           <div class="key-audio-note">
             <strong>Audio Key</strong>
             <span id="audioKeyStatus">Tracks are playing in the original recorded key.</span>
+            <button id="renderShiftedButton" class="primary-button" type="button">Render shifted mix</button>
           </div>
         </section>
 
@@ -134,11 +139,40 @@
             <button id="hdExportButton" class="primary-button export-button" type="button">Render WAV</button>
             <span id="mixStatus" class="mix-status">Live browser mix</span>
           </div>
+          <div class="mix-toolbar">
+            <button id="saveMixButton" class="secondary-button" type="button">Save Mix</button>
+            <label class="toolbar-field">
+              Export
+              <select id="exportPreset" class="select compact">
+                <option value="full">Full Mix</option>
+                <option value="minus_vocals">Minus Vocals</option>
+                <option value="minus_guitar">Minus Guitar</option>
+                <option value="minus_keys">Minus Keys</option>
+                <option value="stems_zip">Stems ZIP</option>
+              </select>
+            </label>
+            <label class="toolbar-field">
+              Format
+              <select id="exportFormat" class="select compact">
+                <option value="wav">WAV 24-bit</option>
+                <option value="mp3">MP3 320k</option>
+              </select>
+            </label>
+            <button id="setLoopStartButton" class="secondary-button" type="button">Set Loop A</button>
+            <button id="setLoopEndButton" class="secondary-button" type="button">Set Loop B</button>
+            <button id="clearLoopButton" class="secondary-button" type="button">Clear Loop</button>
+            <span id="loopStatus" class="mix-status">Loop off</span>
+          </div>
+          <div class="mix-toolbar">
+            <input id="sectionNameInput" class="section-name-input" type="text" placeholder="Intro, Verse, Solo..." />
+            <button id="addSectionButton" class="secondary-button" type="button">Mark Section</button>
+            <div id="sectionList" class="section-list"></div>
+          </div>
           <div id="editMixDeck" class="edit-mix-deck"></div>
         </section>
       </section>
     </main>
 
-    <script src="/static/app.js?v=20260727-edit-mix-reverb"></script>
+    <script src="/static/app.js?v=20260727-practice-tools"></script>
   </body>
 </html>

@@ -271,13 +271,29 @@ p {
   top: 0;
   z-index: 2;
   display: grid;
-  grid-template-columns: 96px 48px auto minmax(180px, 1fr) 210px;
+  grid-template-columns: 96px 48px auto minmax(180px, 1fr) 210px minmax(170px, auto);
   gap: 12px;
   align-items: center;
   min-height: 76px;
   padding: 16px 22px;
   border-bottom: 1px solid var(--line);
   background: rgba(10, 7, 7, 0.97);
+}
+
+.practice-toggles {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.practice-toggles label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
 }
 
 .transport-button {
@@ -521,6 +537,10 @@ p {
   color: var(--muted);
 }
 
+.key-audio-note .primary-button {
+  min-width: 170px;
+}
+
 .key-audio-note strong {
   color: var(--stage);
 }
@@ -550,6 +570,53 @@ p {
   background:
     linear-gradient(135deg, rgba(229, 9, 20, 0.24), transparent 46%),
     var(--panel);
+}
+
+.mix-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(20, 17, 17, 0.78);
+}
+
+.toolbar-field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.section-name-input {
+  min-height: 38px;
+  min-width: 190px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 0 10px;
+}
+
+.section-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.section-chip {
+  min-height: 32px;
+  border: 1px solid rgba(255, 176, 0, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 176, 0, 0.08);
+  color: var(--stage);
+  padding: 0 12px;
+  cursor: pointer;
+  font-weight: 800;
 }
 
 .mix-console strong {
@@ -905,7 +972,8 @@ audio {
 
   .time-readout,
   .seek,
-  .tempo-mode {
+  .tempo-mode,
+  .practice-toggles {
     grid-column: 1 / -1;
   }
 
@@ -962,6 +1030,7 @@ audio {
   }
 
   .mix-console,
+  .mix-toolbar,
   .mix-strip,
   .edit-mix-deck {
     grid-template-columns: 1fr;

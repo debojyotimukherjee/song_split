@@ -85,6 +85,11 @@ const state = {
   reverbImpulse: null,
   hdMaster: false,
   mixSettings: new Map(),
+  sections: [],
+  loopStart: null,
+  loopEnd: null,
+  clickTimer: null,
+  countInActive: false,
   playing: false,
   seeking: false,
   activeView: "track",
@@ -116,9 +121,22 @@ const els = {
   transposeSummary: document.querySelector("#transposeSummary"),
   resetKeyButton: document.querySelector("#resetKeyButton"),
   audioKeyStatus: document.querySelector("#audioKeyStatus"),
+  renderShiftedButton: document.querySelector("#renderShiftedButton"),
   editMixDeck: document.querySelector("#editMixDeck"),
   hdMasterButton: document.querySelector("#hdMasterButton"),
   hdExportButton: document.querySelector("#hdExportButton"),
+  saveMixButton: document.querySelector("#saveMixButton"),
+  exportPreset: document.querySelector("#exportPreset"),
+  exportFormat: document.querySelector("#exportFormat"),
+  setLoopStartButton: document.querySelector("#setLoopStartButton"),
+  setLoopEndButton: document.querySelector("#setLoopEndButton"),
+  clearLoopButton: document.querySelector("#clearLoopButton"),
+  loopStatus: document.querySelector("#loopStatus"),
+  sectionNameInput: document.querySelector("#sectionNameInput"),
+  addSectionButton: document.querySelector("#addSectionButton"),
+  sectionList: document.querySelector("#sectionList"),
+  countInToggle: document.querySelector("#countInToggle"),
+  metronomeToggle: document.querySelector("#metronomeToggle"),
   mixStatus: document.querySelector("#mixStatus"),
   playButton: document.querySelector("#playButton"),
   stopButton: document.querySelector("#stopButton"),
@@ -166,8 +184,17 @@ function bindEvents() {
   });
   els.targetKey.addEventListener("change", () => setTargetKey(els.targetKey.value));
   els.resetKeyButton.addEventListener("click", () => setTargetKey(state.detectedKey || "C"));
+  els.renderShiftedButton.addEventListener("click", renderShiftedMix);
   els.hdMasterButton.addEventListener("click", toggleHdMaster);
   els.hdExportButton.addEventListener("click", renderHdMix);
+  els.saveMixButton.addEventListener("click", saveMixSettings);
+  els.setLoopStartButton.addEventListener("click", setLoopStart);
+  els.setLoopEndButton.addEventListener("click", setLoopEnd);
+  els.clearLoopButton.addEventListener("click", clearLoop);
+  els.addSectionButton.addEventListener("click", addSectionMarker);
+  els.metronomeToggle.addEventListener("change", () => {
+    if (state.playing) startOrStopClick();
+  });
   els.uploadButton.addEventListener("click", () => uploadSelectedFile("none"));
   els.splitButton.addEventListener("click", () => uploadSelectedFile("demucs"));
   els.cancelSplitButton.addEventListener("click", cancelCurrentSplit);
@@ -210,6 +237,8 @@ async function selectJob(jobId) {
     Updated: ${new Date(state.job.updated_at).toLocaleString()}
   `;
   renderTracks(state.job);
+  await loadMixSettings();
+  await loadSections();
   renderEditMix();
   await loadChords(state.job.job_id);
 }
@@ -251,10 +280,10 @@ function renderChords() {
     els.chordTimeline.textContent = "No chord analysis yet";
     els.fullChordTimeline.textContent = "No chord analysis yet";
     els.chordList.innerHTML = "";
-  els.currentChord.textContent = "--";
-  els.chordViewBar.textContent = "Bar 1";
-  updateAudioKeyStatus();
-  return;
+    els.currentChord.textContent = "--";
+    els.chordViewBar.textContent = "Bar 1";
+    updateAudioKeyStatus();
+    return;
   }
 
   renderChordTimeline(els.chordTimeline, duration, "compact");
@@ -278,6 +307,7 @@ function renderChordTimeline(container, duration, variant) {
     block.style.flexBasis = `${Math.max(3, ((segment.end - segment.start) / duration) * 100)}%`;
     block.title = `${chord} ${barLabel}`;
     block.addEventListener("click", () => seekAll(segment.start));
+    block.addEventListener("dblclick", () => editChordSegment(index));
     container.append(block);
   });
 }
@@ -299,8 +329,31 @@ function renderBarChart(duration) {
       <span>${index + 1}</span>
     `;
     item.addEventListener("click", () => seekAll(start));
+    item.addEventListener("dblclick", () => {
+      const segmentIndex = state.chords.findIndex((segment) => midpoint >= segment.start && midpoint < segment.end);
+      if (segmentIndex >= 0) editChordSegment(segmentIndex);
+    });
     els.chordList.append(item);
   }
+}
+
+async function editChordSegment(index) {
+  if (!state.job || !state.chords[index]) return;
+  const current = state.chords[index].chord;
+  const next = window.prompt("Correct chord", current);
+  if (!next || next.trim() === current) return;
+  const response = await fetch(`/api/jobs/${encodeURIComponent(state.job.job_id)}/chords/${index}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chord: next.trim() }),
+  });
+  if (!response.ok) {
+    els.jobMeta.textContent = await response.text();
+    return;
+  }
+  const analysis = await response.json();
+  state.chords = analysis.segments || state.chords;
+  renderChords();
 }
 
 function renderTracks(job) {
@@ -412,6 +465,9 @@ async function togglePlayback() {
   await ensureTracksReady();
   await ensureAudioGraph();
   const time = master.currentTime;
+  if (els.countInToggle.checked && !state.countInActive) {
+    await playCountIn();
+  }
   pauseAll(false);
   seekAll(time);
   syncTracksToMaster(time, 0);
@@ -421,6 +477,7 @@ async function togglePlayback() {
   state.playing = true;
   els.playButton.textContent = "Pause";
   startSyncLoop();
+  startOrStopClick();
 }
 
 function pauseAll(updateState = true) {
@@ -429,6 +486,7 @@ function pauseAll(updateState = true) {
     track.audio.playbackRate = state.playbackRate;
   }
   stopSyncLoop();
+  stopClick();
   if (updateState) {
     state.playing = false;
     els.playButton.textContent = "Play";
@@ -467,6 +525,10 @@ function startSyncLoop() {
     updateTimeDisplay(master.currentTime, duration);
     if (duration > 0) {
       els.seekBar.value = String(Math.round((master.currentTime / duration) * 1000));
+    }
+    if (state.loopStart !== null && state.loopEnd !== null && master.currentTime >= state.loopEnd) {
+      seekAll(state.loopStart);
+      return;
     }
     syncTracksToMaster(master.currentTime, 0.06);
   }, 180);
@@ -684,11 +746,74 @@ function updateMixStatus() {
     : "Live browser mix";
 }
 
+async function loadMixSettings() {
+  if (!state.job) return;
+  try {
+    const response = await fetch(`/api/jobs/${encodeURIComponent(state.job.job_id)}/mix-settings`);
+    if (!response.ok) return;
+    const data = await response.json();
+    const settings = data.settings || {};
+    state.hdMaster = Boolean(settings.hdMaster);
+    state.playbackRate = Number(settings.playbackRate) || state.playbackRate;
+    els.tempoSlider.value = String(Math.round(state.playbackRate * 100));
+    for (const [trackName, trackSettings] of Object.entries(settings.tracks || {})) {
+      state.mixSettings.set(trackName, {
+        ...ensureMixSettings(trackName),
+        ...trackSettings,
+      });
+      const track = state.tracks.get(trackName);
+      if (track) {
+        track.volume = Number(trackSettings.volume ?? track.volume);
+        track.muted = Boolean(trackSettings.muted);
+        track.solo = Boolean(trackSettings.solo);
+        track.row.querySelector(".volume").value = String(track.volume);
+        track.row.querySelector(".mute").classList.toggle("active", track.muted);
+        track.row.querySelector(".solo").classList.toggle("active", track.solo);
+      }
+    }
+    applyEqToAllTracks();
+    applyTrackMix();
+    updateMixStatus();
+    updateTempoReadout();
+  } catch {
+    // Saved mix settings are optional.
+  }
+}
+
+async function saveMixSettings() {
+  if (!state.job) return;
+  const response = await fetch(`/api/jobs/${encodeURIComponent(state.job.job_id)}/mix-settings`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ settings: serializeMixSettings() }),
+  });
+  els.mixStatus.textContent = response.ok ? "Mix saved" : "Could not save mix";
+}
+
+function serializeMixSettings() {
+  const tracks = {};
+  for (const track of state.tracks.values()) {
+    tracks[track.name] = {
+      ...ensureMixSettings(track.name),
+      volume: track.volume,
+      muted: track.muted,
+      solo: track.solo,
+    };
+  }
+  return {
+    hdMaster: state.hdMaster,
+    playbackRate: state.playbackRate,
+    tracks,
+  };
+}
+
 async function renderHdMix() {
   if (!state.job) return;
   els.hdExportButton.disabled = true;
   els.hdExportButton.textContent = "Rendering...";
-  els.mixStatus.textContent = "Rendering 48kHz / 24-bit WAV...";
+  const format = els.exportFormat.value;
+  const preset = els.exportPreset.value;
+  els.mixStatus.textContent = preset === "stems_zip" ? "Preparing stems ZIP..." : `Rendering ${format.toUpperCase()}...`;
   try {
     const response = await fetch(`/api/jobs/${encodeURIComponent(state.job.job_id)}/exports/hd-mix`, {
       method: "POST",
@@ -725,8 +850,22 @@ function buildHdMixPayload() {
   }
   return {
     hd_master: state.hdMaster,
+    semitones: transposeSemitones(),
+    format: els.exportFormat.value,
+    preset: els.exportPreset.value,
     tracks,
   };
+}
+
+async function renderShiftedMix() {
+  if (!state.job) return;
+  const previousPreset = els.exportPreset.value;
+  const previousFormat = els.exportFormat.value;
+  els.exportPreset.value = "full";
+  els.exportFormat.value = "wav";
+  await renderHdMix();
+  els.exportPreset.value = previousPreset;
+  els.exportFormat.value = previousFormat;
 }
 
 function renderEditMix() {
@@ -798,6 +937,131 @@ function formatPercent(value) {
   return `${Math.round(Number(value) || 0)}%`;
 }
 
+async function loadSections() {
+  state.sections = [];
+  if (!state.job) return;
+  try {
+    const response = await fetch(`/api/jobs/${encodeURIComponent(state.job.job_id)}/sections`);
+    if (!response.ok) return;
+    const data = await response.json();
+    state.sections = Array.isArray(data.sections) ? data.sections : [];
+    renderSections();
+  } catch {
+    renderSections();
+  }
+}
+
+async function saveSections() {
+  if (!state.job) return;
+  await fetch(`/api/jobs/${encodeURIComponent(state.job.job_id)}/sections`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sections: state.sections }),
+  });
+}
+
+async function addSectionMarker() {
+  if (!state.job) return;
+  const master = getMaster();
+  const name = els.sectionNameInput.value.trim() || `Section ${state.sections.length + 1}`;
+  state.sections.push({
+    name,
+    start: master?.currentTime || 0,
+  });
+  state.sections.sort((a, b) => Number(a.start) - Number(b.start));
+  els.sectionNameInput.value = "";
+  renderSections();
+  await saveSections();
+}
+
+function renderSections() {
+  if (!els.sectionList) return;
+  els.sectionList.innerHTML = "";
+  for (const section of state.sections) {
+    const button = document.createElement("button");
+    button.className = "section-chip";
+    button.type = "button";
+    button.textContent = `${section.name} ${formatTime(section.start)}`;
+    button.addEventListener("click", () => seekAll(Number(section.start) || 0));
+    button.addEventListener("dblclick", async () => {
+      state.sections = state.sections.filter((item) => item !== section);
+      renderSections();
+      await saveSections();
+    });
+    els.sectionList.append(button);
+  }
+}
+
+function setLoopStart() {
+  state.loopStart = getMaster()?.currentTime || 0;
+  if (state.loopEnd !== null && state.loopEnd <= state.loopStart) state.loopEnd = null;
+  updateLoopStatus();
+}
+
+function setLoopEnd() {
+  state.loopEnd = getMaster()?.currentTime || 0;
+  if (state.loopStart === null || state.loopStart >= state.loopEnd) {
+    state.loopStart = 0;
+  }
+  updateLoopStatus();
+}
+
+function clearLoop() {
+  state.loopStart = null;
+  state.loopEnd = null;
+  updateLoopStatus();
+}
+
+function updateLoopStatus() {
+  if (!els.loopStatus) return;
+  els.loopStatus.textContent = state.loopStart !== null && state.loopEnd !== null
+    ? `Loop ${formatTime(state.loopStart)} - ${formatTime(state.loopEnd)}`
+    : "Loop off";
+}
+
+async function playCountIn() {
+  state.countInActive = true;
+  const beats = 4;
+  const interval = (60 / (state.tempo?.bpm || 120)) * 1000;
+  for (let beat = 0; beat < beats; beat += 1) {
+    playClick(beat === 0 ? 1320 : 920);
+    await new Promise((resolve) => window.setTimeout(resolve, interval));
+  }
+  state.countInActive = false;
+}
+
+function startOrStopClick() {
+  stopClick();
+  if (!els.metronomeToggle.checked || !state.playing) return;
+  const interval = (60 / (state.tempo?.bpm || 120)) * 1000 / state.playbackRate;
+  playClick(1100);
+  state.clickTimer = window.setInterval(() => playClick(880), interval);
+}
+
+function stopClick() {
+  if (state.clickTimer) {
+    window.clearInterval(state.clickTimer);
+    state.clickTimer = null;
+  }
+}
+
+function playClick(frequency) {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  const context = state.audioContext || (AudioContextClass ? new AudioContextClass() : null);
+  if (!context) return;
+  if (!state.audioContext) state.audioContext = context;
+  const osc = context.createOscillator();
+  const gain = context.createGain();
+  osc.frequency.value = frequency;
+  gain.gain.setValueAtTime(0.0001, context.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.18, context.currentTime + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.08);
+  osc.connect(gain);
+  gain.connect(context.destination);
+  osc.start();
+  osc.stop(context.currentTime + 0.09);
+}
+
 function createReverbImpulse() {
   if (state.reverbImpulse || !state.audioContext) return state.reverbImpulse;
   const sampleRate = state.audioContext.sampleRate;
@@ -824,6 +1088,7 @@ function setPlaybackRate(rate) {
     track.audio.webkitPreservesPitch = true;
   }
   updateTempoReadout();
+  if (state.playing) startOrStopClick();
 }
 
 function getDuration() {
