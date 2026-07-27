@@ -28,6 +28,22 @@ const TRACK_INSTRUMENTS = {
   other: "🎷",
 };
 
+const EQ_BANDS = [
+  { key: "low", label: "Low", type: "lowshelf", frequency: 120, q: 0.7 },
+  { key: "mid", label: "Mid", type: "peaking", frequency: 1100, q: 0.95 },
+  { key: "high", label: "High", type: "highshelf", frequency: 6200, q: 0.7 },
+];
+
+const MIX_PRESETS = {
+  main_vocal: { low: -1, mid: 2, high: 1 },
+  backing_vocal: { low: -2, mid: 1, high: 1 },
+  drums: { low: 2, mid: 0, high: 2 },
+  bass: { low: 3, mid: -2, high: 0 },
+  guitar: { low: -1, mid: 2, high: 2 },
+  keys: { low: -2, mid: 1, high: 3 },
+  other: { low: -1, mid: 0, high: 1 },
+};
+
 const KEY_OPTIONS = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
 const NOTE_TO_PC = {
   C: 0,
@@ -62,6 +78,12 @@ const state = {
   detectedKey: null,
   targetKey: null,
   playbackRate: 1,
+  audioContext: null,
+  masterInput: null,
+  masterCompressor: null,
+  masterGain: null,
+  hdMaster: false,
+  mixSettings: new Map(),
   playing: false,
   seeking: false,
   activeView: "track",
@@ -77,6 +99,7 @@ const els = {
   trackView: document.querySelector("#trackView"),
   chordView: document.querySelector("#chordView"),
   keyView: document.querySelector("#keyView"),
+  editMixView: document.querySelector("#editMixView"),
   jobSelect: document.querySelector("#jobSelect"),
   deleteSongButton: document.querySelector("#deleteSongButton"),
   jobMeta: document.querySelector("#jobMeta"),
@@ -91,6 +114,11 @@ const els = {
   targetKey: document.querySelector("#targetKey"),
   transposeSummary: document.querySelector("#transposeSummary"),
   resetKeyButton: document.querySelector("#resetKeyButton"),
+  audioKeyStatus: document.querySelector("#audioKeyStatus"),
+  editMixDeck: document.querySelector("#editMixDeck"),
+  hdMasterButton: document.querySelector("#hdMasterButton"),
+  hdExportButton: document.querySelector("#hdExportButton"),
+  mixStatus: document.querySelector("#mixStatus"),
   playButton: document.querySelector("#playButton"),
   stopButton: document.querySelector("#stopButton"),
   currentTime: document.querySelector("#currentTime"),
@@ -137,6 +165,8 @@ function bindEvents() {
   });
   els.targetKey.addEventListener("change", () => setTargetKey(els.targetKey.value));
   els.resetKeyButton.addEventListener("click", () => setTargetKey(state.detectedKey || "C"));
+  els.hdMasterButton.addEventListener("click", toggleHdMaster);
+  els.hdExportButton.addEventListener("click", renderHdMix);
   els.uploadButton.addEventListener("click", () => uploadSelectedFile("none"));
   els.splitButton.addEventListener("click", () => uploadSelectedFile("demucs"));
   els.cancelSplitButton.addEventListener("click", cancelCurrentSplit);
@@ -151,6 +181,7 @@ async function loadJobs() {
     els.jobSelect.innerHTML = "<option>No songs found</option>";
     els.jobMeta.textContent = "Split a song first.";
     els.tracks.innerHTML = '<div class="empty">No separated songs yet.</div>';
+    els.editMixDeck.innerHTML = '<div class="empty">No separated songs yet.</div>';
     els.deleteSongButton.disabled = true;
     return;
   }
@@ -178,6 +209,7 @@ async function selectJob(jobId) {
     Updated: ${new Date(state.job.updated_at).toLocaleString()}
   `;
   renderTracks(state.job);
+  renderEditMix();
   await loadChords(state.job.job_id);
 }
 
@@ -195,6 +227,7 @@ async function loadChords(jobId) {
   els.chordViewBar.textContent = "Bar 1";
   updateTempoReadout();
   updateKeyReadout();
+  updateAudioKeyStatus();
   try {
     const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/chords`);
     if (!response.ok) return;
@@ -217,9 +250,10 @@ function renderChords() {
     els.chordTimeline.textContent = "No chord analysis yet";
     els.fullChordTimeline.textContent = "No chord analysis yet";
     els.chordList.innerHTML = "";
-    els.currentChord.textContent = "--";
-    els.chordViewBar.textContent = "Bar 1";
-    return;
+  els.currentChord.textContent = "--";
+  els.chordViewBar.textContent = "Bar 1";
+  updateAudioKeyStatus();
+  return;
   }
 
   renderChordTimeline(els.chordTimeline, duration, "compact");
@@ -324,7 +358,11 @@ function renderTracks(job) {
       solo: false,
       volume: 1,
       row,
+      sourceNode: null,
+      eqNodes: null,
+      gainNode: null,
     };
+    ensureMixSettings(name);
     state.tracks.set(name, track);
 
     row.querySelector(".mute").addEventListener("click", () => {
@@ -346,6 +384,7 @@ function renderTracks(job) {
   }
 
   applyTrackMix();
+  renderEditMix();
 }
 
 function audioUrl(jobId, trackName) {
@@ -369,6 +408,7 @@ async function togglePlayback() {
   }
 
   await ensureTracksReady();
+  await ensureAudioGraph();
   const time = master.currentTime;
   pauseAll(false);
   seekAll(time);
@@ -480,9 +520,250 @@ async function ensureTracksReady() {
 function applyTrackMix() {
   const hasSolo = [...state.tracks.values()].some((track) => track.solo);
   for (const track of state.tracks.values()) {
-    track.audio.muted = track.muted || (hasSolo && !track.solo);
-    track.audio.volume = track.volume;
+    const audible = !(track.muted || (hasSolo && !track.solo));
+    if (track.gainNode) {
+      track.audio.muted = false;
+      track.audio.volume = 1;
+      track.gainNode.gain.value = audible ? track.volume : 0;
+    } else {
+      track.audio.muted = !audible;
+      track.audio.volume = track.volume;
+    }
   }
+}
+
+async function ensureAudioGraph() {
+  if (!state.audioContext) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+      els.mixStatus.textContent = "EQ unavailable in this browser";
+      return;
+    }
+    state.audioContext = new AudioContextClass();
+    state.masterInput = state.audioContext.createGain();
+    state.masterCompressor = state.audioContext.createDynamicsCompressor();
+    state.masterCompressor.threshold.value = -18;
+    state.masterCompressor.knee.value = 18;
+    state.masterCompressor.ratio.value = 3.2;
+    state.masterCompressor.attack.value = 0.006;
+    state.masterCompressor.release.value = 0.18;
+    state.masterGain = state.audioContext.createGain();
+    state.masterGain.gain.value = 0.92;
+    rebuildMasterChain();
+  }
+
+  if (state.audioContext.state === "suspended") {
+    await state.audioContext.resume();
+  }
+
+  for (const track of state.tracks.values()) {
+    connectTrackGraph(track);
+  }
+  applyEqToAllTracks();
+  applyTrackMix();
+  updateMixStatus();
+}
+
+function connectTrackGraph(track) {
+  if (!state.audioContext || track.sourceNode) return;
+  track.sourceNode = state.audioContext.createMediaElementSource(track.audio);
+  const low = state.audioContext.createBiquadFilter();
+  const mid = state.audioContext.createBiquadFilter();
+  const high = state.audioContext.createBiquadFilter();
+  const gain = state.audioContext.createGain();
+
+  const filters = { low, mid, high };
+  for (const band of EQ_BANDS) {
+    filters[band.key].type = band.type;
+    filters[band.key].frequency.value = band.frequency;
+    filters[band.key].Q.value = band.q;
+  }
+
+  track.sourceNode.connect(low);
+  low.connect(mid);
+  mid.connect(high);
+  high.connect(gain);
+  gain.connect(state.masterInput);
+  track.eqNodes = filters;
+  track.gainNode = gain;
+  applyEqToTrack(track);
+}
+
+function rebuildMasterChain() {
+  if (!state.masterInput || !state.masterGain || !state.audioContext) return;
+  try {
+    state.masterInput.disconnect();
+    state.masterCompressor.disconnect();
+    state.masterGain.disconnect();
+  } catch {
+    // Nodes may not be connected yet.
+  }
+
+  if (state.hdMaster) {
+    state.masterInput.connect(state.masterCompressor);
+    state.masterCompressor.connect(state.masterGain);
+  } else {
+    state.masterInput.connect(state.masterGain);
+  }
+  state.masterGain.connect(state.audioContext.destination);
+}
+
+function ensureMixSettings(trackName) {
+  if (!state.mixSettings.has(trackName)) {
+    state.mixSettings.set(trackName, { ...(MIX_PRESETS[trackName] || { low: 0, mid: 0, high: 0 }) });
+  }
+  return state.mixSettings.get(trackName);
+}
+
+function applyEqToAllTracks() {
+  for (const track of state.tracks.values()) {
+    applyEqToTrack(track);
+  }
+}
+
+function applyEqToTrack(track) {
+  if (!track.eqNodes) return;
+  const settings = ensureMixSettings(track.name);
+  for (const band of EQ_BANDS) {
+    track.eqNodes[band.key].gain.value = Number(settings[band.key]) || 0;
+  }
+}
+
+function setEqValue(trackName, bandKey, value) {
+  const settings = ensureMixSettings(trackName);
+  settings[bandKey] = Math.max(-12, Math.min(12, Number(value) || 0));
+  const track = state.tracks.get(trackName);
+  if (track) applyEqToTrack(track);
+}
+
+function resetEq(trackName) {
+  state.mixSettings.set(trackName, { low: 0, mid: 0, high: 0 });
+  const track = state.tracks.get(trackName);
+  if (track) applyEqToTrack(track);
+  renderEditMix();
+}
+
+function applyPreset(trackName) {
+  state.mixSettings.set(trackName, { ...(MIX_PRESETS[trackName] || { low: 0, mid: 0, high: 0 }) });
+  const track = state.tracks.get(trackName);
+  if (track) applyEqToTrack(track);
+  renderEditMix();
+}
+
+function toggleHdMaster() {
+  state.hdMaster = !state.hdMaster;
+  rebuildMasterChain();
+  updateMixStatus();
+}
+
+function updateMixStatus() {
+  els.hdMasterButton.textContent = state.hdMaster ? "On" : "Off";
+  els.hdMasterButton.setAttribute("aria-pressed", String(state.hdMaster));
+  els.hdMasterButton.classList.toggle("active", state.hdMaster);
+  els.mixStatus.textContent = state.hdMaster
+    ? "Live HD master chain active"
+    : "Live browser mix";
+}
+
+async function renderHdMix() {
+  if (!state.job) return;
+  els.hdExportButton.disabled = true;
+  els.hdExportButton.textContent = "Rendering...";
+  els.mixStatus.textContent = "Rendering 48kHz / 24-bit WAV...";
+  try {
+    const response = await fetch(`/api/jobs/${encodeURIComponent(state.job.job_id)}/exports/hd-mix`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildHdMixPayload()),
+    });
+    if (!response.ok) {
+      els.mixStatus.textContent = await response.text();
+      return;
+    }
+    const result = await response.json();
+    els.mixStatus.innerHTML = `<a href="${escapeHtml(result.url)}" download>${escapeHtml(result.filename)}</a>`;
+  } catch {
+    els.mixStatus.textContent = "HD render failed.";
+  } finally {
+    els.hdExportButton.disabled = false;
+    els.hdExportButton.textContent = "Render WAV";
+  }
+}
+
+function buildHdMixPayload() {
+  const hasSolo = [...state.tracks.values()].some((track) => track.solo);
+  const tracks = {};
+  for (const track of state.tracks.values()) {
+    const eq = ensureMixSettings(track.name);
+    tracks[track.name] = {
+      volume: track.volume,
+      muted: track.muted || (hasSolo && !track.solo),
+      low: eq.low,
+      mid: eq.mid,
+      high: eq.high,
+    };
+  }
+  return {
+    hd_master: state.hdMaster,
+    tracks,
+  };
+}
+
+function renderEditMix() {
+  if (!els.editMixDeck) return;
+  updateMixStatus();
+  els.editMixDeck.innerHTML = "";
+  if (!state.job || !state.tracks.size) {
+    els.editMixDeck.innerHTML = '<div class="empty">No separated songs yet.</div>';
+    return;
+  }
+
+  for (const name of TRACK_ORDER) {
+    const track = state.tracks.get(name);
+    if (!track) continue;
+    const settings = ensureMixSettings(name);
+    const strip = document.createElement("article");
+    strip.className = "mix-strip";
+    strip.innerHTML = `
+      <div class="mix-strip-title">
+        <span class="instrument-badge" aria-label="${TRACK_LABELS[name]}" title="${TRACK_LABELS[name]}">${TRACK_INSTRUMENTS[name] || "🎚️"}</span>
+        <strong>${TRACK_LABELS[name]}</strong>
+      </div>
+      <div class="eq-bank">
+        ${EQ_BANDS.map((band) => `
+          <label class="eq-control">
+            <span>${band.label}</span>
+            <input type="range" min="-12" max="12" step="1" value="${settings[band.key]}" data-track="${name}" data-band="${band.key}" />
+            <strong>${formatDb(settings[band.key])}</strong>
+          </label>
+        `).join("")}
+      </div>
+      <div class="mix-actions">
+        <button class="secondary-button preset-button" type="button" data-preset="${name}">Preset</button>
+        <button class="secondary-button reset-eq-button" type="button" data-reset="${name}">Flat</button>
+      </div>
+    `;
+    els.editMixDeck.append(strip);
+  }
+
+  els.editMixDeck.querySelectorAll("[data-track][data-band]").forEach((slider) => {
+    slider.addEventListener("input", (event) => {
+      setEqValue(event.target.dataset.track, event.target.dataset.band, event.target.value);
+      event.target.closest(".eq-control")?.querySelector("strong").replaceChildren(formatDb(event.target.value));
+    });
+  });
+  els.editMixDeck.querySelectorAll("[data-preset]").forEach((button) => {
+    button.addEventListener("click", () => applyPreset(button.dataset.preset));
+  });
+  els.editMixDeck.querySelectorAll("[data-reset]").forEach((button) => {
+    button.addEventListener("click", () => resetEq(button.dataset.reset));
+  });
+}
+
+function formatDb(value) {
+  const db = Number(value) || 0;
+  if (db === 0) return "0 dB";
+  return `${db > 0 ? "+" : ""}${db} dB`;
 }
 
 function setPlaybackRate(rate) {
@@ -548,13 +829,15 @@ function updateChordHighlight(time, forceScroll) {
 }
 
 function setActiveView(view) {
-  state.activeView = ["chord", "key"].includes(view) ? view : "track";
+  state.activeView = ["chord", "key", "edit"].includes(view) ? view : "track";
   els.tabs.forEach((tab) => {
     tab.classList.toggle("active", tab.dataset.view === state.activeView);
   });
   els.trackView.classList.toggle("active", state.activeView === "track");
   els.chordView.classList.toggle("active", state.activeView === "chord");
   els.keyView.classList.toggle("active", state.activeView === "key");
+  els.editMixView.classList.toggle("active", state.activeView === "edit");
+  if (state.activeView === "edit") renderEditMix();
   updateChordHighlight(getMaster()?.currentTime || 0, true);
 }
 
@@ -600,6 +883,7 @@ function renderKeyOptions() {
 function setTargetKey(key) {
   state.targetKey = KEY_OPTIONS.includes(key) ? key : state.detectedKey;
   updateKeyReadout();
+  updateAudioKeyStatus();
   renderChords();
 }
 
@@ -612,6 +896,14 @@ function updateKeyReadout() {
   els.transposeSummary.textContent = semitones === 0
     ? `Showing original key: ${detected}`
     : `Showing ${target}, transposed ${formatSemitones(semitones)} from ${detected}`;
+}
+
+function updateAudioKeyStatus() {
+  if (!els.audioKeyStatus) return;
+  const semitones = transposeSemitones();
+  els.audioKeyStatus.textContent = semitones === 0
+    ? "Tracks are playing in the original recorded key."
+    : `Chart is transposed ${formatSemitones(semitones)}; audio is still original until shifted tracks are rendered.`;
 }
 
 function detectSongKey(chords) {

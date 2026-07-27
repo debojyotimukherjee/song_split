@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Weekend Stems</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260727-fixed-clean-tracks" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260727-edit-mix" />
   </head>
   <body>
     <main class="app-shell">
@@ -74,6 +74,7 @@
           <button id="trackTab" class="view-tab active" type="button" data-view="track">Track View</button>
           <button id="chordTab" class="view-tab" type="button" data-view="chord">Chord View</button>
           <button id="keyTab" class="view-tab" type="button" data-view="key">Song Key</button>
+          <button id="editMixTab" class="view-tab" type="button" data-view="edit">Edit Mix</button>
         </nav>
 
         <section id="trackView" class="view-panel active" aria-label="Track view">
@@ -117,10 +118,27 @@
             <span id="transposeSummary">No transposition</span>
             <button id="resetKeyButton" class="secondary-button" type="button">Reset to original key</button>
           </div>
+          <div class="key-audio-note">
+            <strong>Audio Key</strong>
+            <span id="audioKeyStatus">Tracks are playing in the original recorded key.</span>
+          </div>
+        </section>
+
+        <section id="editMixView" class="view-panel edit-mix-view" aria-label="Edit mix view">
+          <div class="mix-console">
+            <div>
+              <span class="stage-label">Master</span>
+              <strong>HD Mix</strong>
+            </div>
+            <button id="hdMasterButton" class="master-button" type="button" aria-pressed="false">Off</button>
+            <button id="hdExportButton" class="primary-button export-button" type="button">Render WAV</button>
+            <span id="mixStatus" class="mix-status">Live browser mix</span>
+          </div>
+          <div id="editMixDeck" class="edit-mix-deck"></div>
         </section>
       </section>
     </main>
 
-    <script src="/static/app.js?v=20260727-fixed-clean-tracks"></script>
+    <script src="/static/app.js?v=20260727-edit-mix"></script>
   </body>
 </html>
