@@ -8,6 +8,7 @@ from typing import Callable
 
 from app.audio.instruments.bass import create_bass_stem
 from app.audio.instruments.drums import create_drums_stem
+from app.audio.instruments.guitar_separation import separate_lead_rhythm
 from app.audio.instruments.keys import create_keys_focus_stem, create_keys_rebuild_stem
 from app.audio.instruments.lead_guitar import create_lead_guitar_stem
 from app.audio.instruments.other import create_other_stem
@@ -196,33 +197,25 @@ def map_demucs_output(model_output_dir: Path, job_dir: Path) -> list[StemManifes
         )
         mapped_targets.add("bass")
 
-    if create_lead_guitar_stem(job_dir):
-        target_file = stems_dir / "lead_guitar.wav"
-        manifests.append(
-            StemManifest(
-                name="lead_guitar",
-                path=str(target_file),
-                status="estimated",
-                source_stem="guitar",
-                confidence=0.62,
-                notes="Estimated from Demucs guitar with a lead-focused filter; no keys or piano are blended in.",
+    guitar_file = raw_stems_dir / "guitar.wav"
+    if guitar_file.exists():
+        guitar_split = separate_lead_rhythm(guitar_file)
+        guitar_stems = [
+            create_lead_guitar_stem(job_dir, guitar_split),
+            create_rhythm_guitar_stem(job_dir, guitar_split),
+        ]
+        for stem_info in [stem for stem in guitar_stems if stem is not None]:
+            manifests.append(
+                StemManifest(
+                    name=stem_info.name,
+                    path=str(stem_info.path),
+                    status=stem_info.status,
+                    source_stem="guitar",
+                    confidence=stem_info.confidence,
+                    notes=stem_info.notes,
+                )
             )
-        )
-        mapped_targets.add("lead_guitar")
-
-    if create_rhythm_guitar_stem(job_dir):
-        target_file = stems_dir / "rhythm_guitar.wav"
-        manifests.append(
-            StemManifest(
-                name="rhythm_guitar",
-                path=str(target_file),
-                status="estimated",
-                source_stem="guitar",
-                confidence=0.62,
-                notes="Estimated from Demucs guitar with a rhythm-focused filter; no keys or piano are blended in.",
-            )
-        )
-        mapped_targets.add("rhythm_guitar")
+            mapped_targets.add(stem_info.name)
 
     other_file = raw_stems_dir / "other.wav"
     if other_file.exists():
