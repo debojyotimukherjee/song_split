@@ -271,7 +271,7 @@ p {
   top: 0;
   z-index: 2;
   display: grid;
-  grid-template-columns: 96px 48px auto minmax(180px, 1fr) 210px minmax(170px, auto);
+  grid-template-columns: 96px 48px auto minmax(180px, 1fr) 210px minmax(170px, auto) minmax(150px, auto);
   gap: 12px;
   align-items: center;
   min-height: 76px;
@@ -294,6 +294,23 @@ p {
   gap: 6px;
   align-items: center;
   white-space: nowrap;
+}
+
+.global-loop-status {
+  justify-self: end;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.global-loop-status.loop-running {
+  border: 1px solid rgba(43, 214, 117, 0.42);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(43, 214, 117, 0.14);
+  color: #65f29a;
+  box-shadow: 0 0 22px rgba(43, 214, 117, 0.18);
 }
 
 .transport-button {
@@ -648,6 +665,16 @@ p {
   text-align: right;
 }
 
+.mix-status.loop-running {
+  justify-self: end;
+  border: 1px solid rgba(43, 214, 117, 0.42);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(43, 214, 117, 0.14);
+  color: #65f29a;
+  box-shadow: 0 0 22px rgba(43, 214, 117, 0.18);
+}
+
 .mix-status a {
   color: var(--stage);
   text-decoration: none;
@@ -921,13 +948,15 @@ p {
 
 .track-controls {
   display: grid;
-  grid-template-columns: repeat(2, 42px) 1fr;
+  grid-template-columns: repeat(2, 62px) 1fr;
   gap: 8px;
   align-items: center;
 }
 
 .track-button {
   height: 34px;
+  min-width: 54px;
+  padding: 0 10px;
   font-weight: 800;
 }
 
@@ -973,7 +1002,8 @@ audio {
   .time-readout,
   .seek,
   .tempo-mode,
-  .practice-toggles {
+  .practice-toggles,
+  .global-loop-status {
     grid-column: 1 / -1;
   }
 

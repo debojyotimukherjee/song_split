@@ -132,6 +132,7 @@ const els = {
   setLoopEndButton: document.querySelector("#setLoopEndButton"),
   clearLoopButton: document.querySelector("#clearLoopButton"),
   loopStatus: document.querySelector("#loopStatus"),
+  globalLoopStatus: document.querySelector("#globalLoopStatus"),
   sectionNameInput: document.querySelector("#sectionNameInput"),
   addSectionButton: document.querySelector("#addSectionButton"),
   sectionList: document.querySelector("#sectionList"),
@@ -396,7 +397,7 @@ function renderTracks(job) {
       </div>
       <div class="wave-wrap"><canvas class="waveform" width="900" height="80"></canvas><span class="playhead"></span></div>
       <div class="track-controls">
-        <button class="track-button mute" type="button">M</button>
+        <button class="track-button mute" type="button">Mute</button>
         <button class="track-button solo" type="button">S</button>
         <input class="volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="${TRACK_LABELS[name]} volume" />
       </div>
@@ -934,7 +935,7 @@ function renderEditMix() {
         </label>
       </div>
       <div class="mix-actions">
-        <button class="track-button mix-mute-button ${track.muted ? "active" : ""}" type="button" data-mix-mute="${name}">M</button>
+        <button class="track-button mix-mute-button ${track.muted ? "active" : ""}" type="button" data-mix-mute="${name}">Mute</button>
         <button class="secondary-button preset-button" type="button" data-preset="${name}">Preset</button>
         <button class="secondary-button reset-eq-button" type="button" data-reset="${name}">Flat</button>
       </div>
@@ -1053,10 +1054,15 @@ function clearLoop() {
 }
 
 function updateLoopStatus() {
-  if (!els.loopStatus) return;
-  els.loopStatus.textContent = state.loopStart !== null && state.loopEnd !== null
-    ? `Loop ${formatTime(state.loopStart)} - ${formatTime(state.loopEnd)}`
+  const running = state.loopStart !== null && state.loopEnd !== null;
+  const text = running
+    ? `Loop Running ${formatTime(state.loopStart)} - ${formatTime(state.loopEnd)}`
     : "Loop off";
+  for (const node of [els.loopStatus, els.globalLoopStatus]) {
+    if (!node) continue;
+    node.classList.toggle("loop-running", running);
+    node.textContent = text;
+  }
 }
 
 async function playCountIn() {

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Weekend Stems</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260727-loop-mix-controls" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260727-loop-running-status" />
   </head>
   <body>
     <main class="app-shell">
@@ -72,6 +72,7 @@
             <label><input id="countInToggle" type="checkbox" /> Count-in</label>
             <label><input id="metronomeToggle" type="checkbox" /> Click</label>
           </div>
+          <span id="globalLoopStatus" class="global-loop-status">Loop off</span>
         </header>
 
         <nav class="view-tabs" aria-label="Mixer views">
@@ -173,6 +174,6 @@
       </section>
     </main>
 
-    <script src="/static/app.js?v=20260727-loop-mix-controls"></script>
+    <script src="/static/app.js?v=20260727-loop-running-status"></script>
   </body>
 </html>
