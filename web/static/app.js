@@ -37,6 +37,11 @@ const EQ_BANDS = [
   { key: "high", label: "High", type: "highshelf", frequency: 6200, q: 0.7 },
 ];
 
+const SIDEBAR_WIDTH_STORAGE_KEY = "wannabeStemSidebarWidth";
+const SIDEBAR_WIDTH_MIN = 260;
+const SIDEBAR_WIDTH_MAX = 520;
+const MIXER_MIN_WIDTH = 720;
+
 const MIX_PRESETS = {
   main_vocal: { volume: 50, low: -1, mid: 2, high: 1, reverb: 62, compression: 64 },
   backing_vocal: { volume: 50, low: -2, mid: 1, high: 1, reverb: 66, compression: 58 },
@@ -162,9 +167,11 @@ const els = {
   splitProgressBar: document.querySelector("#splitProgressBar"),
   splitProgressMessage: document.querySelector("#splitProgressMessage"),
   splitProgressValue: document.querySelector("#splitProgressValue"),
+  sidebarResizeHandle: document.querySelector("#sidebarResizeHandle"),
 };
 
 async function init() {
+  restoreSidebarWidth();
   renderKeyOptions();
   bindEvents();
   await loadJobs();
@@ -208,6 +215,65 @@ function bindEvents() {
   els.uploadButton.addEventListener("click", () => uploadSelectedFile("none"));
   els.splitButton.addEventListener("click", () => uploadSelectedFile("demucs"));
   els.cancelSplitButton.addEventListener("click", cancelCurrentSplit);
+  els.sidebarResizeHandle?.addEventListener("pointerdown", startSidebarResize);
+  els.sidebarResizeHandle?.addEventListener("keydown", adjustSidebarWidthWithKeyboard);
+  window.addEventListener("resize", () => setSidebarWidth(currentSidebarWidth(), false));
+}
+
+function restoreSidebarWidth() {
+  const savedWidth = Number(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY));
+  setSidebarWidth(Number.isFinite(savedWidth) ? savedWidth : 320, false);
+}
+
+function setSidebarWidth(width, persist) {
+  const maxForViewport = Math.max(SIDEBAR_WIDTH_MIN, Math.min(SIDEBAR_WIDTH_MAX, window.innerWidth - MIXER_MIN_WIDTH));
+  const nextWidth = Math.max(SIDEBAR_WIDTH_MIN, Math.min(maxForViewport, Number(width) || 320));
+  document.documentElement.style.setProperty("--sidebar-width", `${nextWidth}px`);
+  if (els.sidebarResizeHandle) {
+    els.sidebarResizeHandle.setAttribute("aria-valuemax", String(maxForViewport));
+    els.sidebarResizeHandle.setAttribute("aria-valuenow", String(nextWidth));
+    els.sidebarResizeHandle.setAttribute("title", `Left pane ${nextWidth}px`);
+  }
+  if (persist) {
+    window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(nextWidth));
+  }
+}
+
+function currentSidebarWidth() {
+  const value = getComputedStyle(document.documentElement).getPropertyValue("--sidebar-width");
+  return Number.parseInt(value, 10) || 320;
+}
+
+function startSidebarResize(event) {
+  if (!els.sidebarResizeHandle) return;
+  event.preventDefault();
+  document.body.classList.add("sidebar-resizing");
+  els.sidebarResizeHandle.setPointerCapture(event.pointerId);
+
+  const move = (moveEvent) => setSidebarWidth(moveEvent.clientX, true);
+  const stop = () => {
+    document.body.classList.remove("sidebar-resizing");
+    els.sidebarResizeHandle?.removeEventListener("pointermove", move);
+    els.sidebarResizeHandle?.removeEventListener("pointerup", stop);
+    els.sidebarResizeHandle?.removeEventListener("pointercancel", stop);
+  };
+
+  els.sidebarResizeHandle.addEventListener("pointermove", move);
+  els.sidebarResizeHandle.addEventListener("pointerup", stop, { once: true });
+  els.sidebarResizeHandle.addEventListener("pointercancel", stop, { once: true });
+}
+
+function adjustSidebarWidthWithKeyboard(event) {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const step = event.shiftKey ? 40 : 10;
+  if (event.key === "Home") {
+    setSidebarWidth(SIDEBAR_WIDTH_MIN, true);
+  } else if (event.key === "End") {
+    setSidebarWidth(SIDEBAR_WIDTH_MAX, true);
+  } else {
+    setSidebarWidth(currentSidebarWidth() + (event.key === "ArrowRight" ? step : -step), true);
+  }
 }
 
 async function loadJobs() {
@@ -316,7 +382,7 @@ function renderChordTimeline(container, duration, variant) {
     block.type = "button";
     block.dataset.chordIndex = String(index);
     const barLabel = formatBarRange(segment);
-    const chord = transposeChord(segment.chord);
+    const chord = displayChord(segment.chord);
     block.innerHTML = variant === "full"
       ? `<span>${escapeHtml(chord)}</span><small>${barLabel}</small>`
       : escapeHtml(chord);
@@ -335,7 +401,7 @@ function renderBarChart(duration) {
   for (let index = 0; index < barCount; index += 1) {
     const start = index * tempo.secondsPerBar;
     const midpoint = start + tempo.secondsPerBar / 2;
-    const chord = transposeChord(chordAtTime(midpoint)?.chord || chordAtTime(start)?.chord || "N");
+    const chord = displayChord(chordAtTime(midpoint)?.chord || chordAtTime(start)?.chord || "~");
     const item = document.createElement("button");
     item.className = "bar-card";
     item.type = "button";
@@ -1306,7 +1372,7 @@ function updateChordHighlight(time, forceScroll) {
   const activeSegment = state.chords[activeIndex];
   const activeBarIndex = barForTime(time) - 1;
 
-  els.currentChord.textContent = activeSegment ? transposeChord(activeSegment.chord) : "--";
+  els.currentChord.textContent = activeSegment ? displayChord(activeSegment.chord) : "--";
   els.chordViewBar.textContent = formatBar(time);
 
   document.querySelectorAll("[data-chord-index]").forEach((node) => {
@@ -1434,6 +1500,12 @@ function transposeChord(chord) {
   if (!parsed) return chord;
   const root = KEY_OPTIONS[(parsed.pc + transposeSemitones() + 12) % 12];
   return `${root}${parsed.suffix}`;
+}
+
+function displayChord(chord) {
+  const normalized = String(chord || "").trim();
+  if (!normalized || normalized === "N") return "~";
+  return transposeChord(normalized);
 }
 
 function transposeSemitones() {

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Wannabe Stem</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260727-edit-volume" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260728-pane-drag-resize" />
   </head>
   <body>
     <main class="app-shell">
@@ -36,8 +36,8 @@
         <section class="drop-panel" aria-label="Upload song">
           <input id="fileInput" type="file" accept="audio/*" />
           <div>
-            <strong>Drop an MP3 later</strong>
-            <span>Upload support is wired, but separation can take a while.</span>
+            <strong>Drop audio here</strong>
+            <span>MP3, WAV, FLAC, and M4A are supported. Separation can take a while.</span>
           </div>
           <div class="upload-actions">
             <button id="uploadButton" class="secondary-button" type="button">Upload only</button>
@@ -52,6 +52,19 @@
             <button id="cancelSplitButton" class="secondary-button" type="button">Cancel Split</button>
           </div>
         </section>
+        <div
+          id="sidebarResizeHandle"
+          class="sidebar-resize-handle"
+          role="separator"
+          aria-label="Resize left pane"
+          aria-orientation="vertical"
+          aria-valuemin="260"
+          aria-valuemax="560"
+          aria-valuenow="320"
+          tabindex="0"
+        >
+          <span>Drag</span>
+        </div>
       </aside>
 
       <section class="mixer">
@@ -188,6 +201,6 @@
       </section>
     </main>
 
-    <script src="/static/app.js?v=20260727-edit-volume"></script>
+    <script src="/static/app.js?v=20260728-pane-drag-resize"></script>
   </body>
 </html>

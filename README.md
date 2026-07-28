@@ -161,7 +161,26 @@ INSTALL_DEMUCS=true docker compose run --rm worker remap data/jobs/<job_id>
 
 # Re-run chord, key, and tempo detection
 INSTALL_DEMUCS=true docker compose run --rm worker analyze-chords data/jobs/<job_id>
+
+# List audio-separator/UVR models by stem name
+docker compose exec api python -m app.cli list-audio-separator-models --filter Guitar --limit 10
+
+# Re-run only the experimental audio-separator specialist pass on an existing job
+docker compose exec api python -m app.cli enhance-audio-separator data/jobs/<job_id>
 ```
+
+## Experimental Audio-Separator Backend
+
+Wannabe Stem can optionally run `audio-separator` after Demucs as a specialist pass for Guitar, Acoustic Guitar, and Keys.
+
+The current Docker Compose setup enables it by default:
+
+```yaml
+SONG_SPLIT_ENABLE_AUDIO_SEPARATOR: true
+SONG_SPLIT_AUDIO_SEPARATOR_MODELS: htdemucs_6s.yaml
+```
+
+Important caveat: audio-separator's built-in models currently list `htdemucs_6s.yaml` as the main model with native `guitar` and `piano` stems. Its stronger UVR models are mostly vocal/instrumental or other/no-other models, so this backend is an experiment framework, not yet a guaranteed dedicated Keys or Acoustic Guitar model.
 
 ## Troubleshooting
 
