@@ -88,6 +88,7 @@ Responsibilities:
 - Keys should prefer the rebuilt keys path and suppress guitar bleed where possible.
 - Other should remain a useful catch-all for instruments not otherwise separated.
 - Keep raw, focus, and rebuild outputs clearly named.
+- `audio-separator` may be used as an experimental specialist pass, but verify model output stems first with `list-audio-separator-models`; do not assume a dedicated Guitar or Keys model exists just because the package is installed.
 
 Done when:
 

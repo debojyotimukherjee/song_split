@@ -4,6 +4,7 @@ from pathlib import Path
 from threading import Event
 from typing import Callable
 
+from app.audio.audio_separator_backend import apply_audio_separator_specialists
 from app.audio.ingest import ingest_file
 from app.audio.normalize import normalize_to_wav
 from app.audio.separate import SplitCancelled, map_demucs_output, run_demucs, unavailable_stems
@@ -59,6 +60,15 @@ def process_file(
             cancel_event=cancel_event,
             progress_callback=progress_callback,
         )
+        _check_cancelled(cancel_event)
+        manifest.stems = apply_audio_separator_specialists(
+            normalized_path,
+            job_dir,
+            settings,
+            manifest.stems,
+            cancel_event=cancel_event,
+            progress_callback=progress_callback,
+        )
         manifest.status = "separated"
     else:
         raise ValueError(f"Unknown separation engine: {engine}")
@@ -93,5 +103,30 @@ def remap_existing_job(job_dir: Path, settings: Settings) -> JobManifest:
         for warning in manifest.warnings
         if warning != "Guitar and keys split with estimated pan-biased second-stage mapping."
     ]
+    write_manifest(job_dir, manifest)
+    return manifest
+
+
+def enhance_existing_job_audio_separator(job_dir: Path, settings: Settings) -> JobManifest:
+    manifest = read_manifest(job_dir)
+    if not manifest.normalized_path:
+        raise ValueError(f"Job has no normalized path: {job_dir}")
+    manifest.stems = apply_audio_separator_specialists(
+        Path(manifest.normalized_path),
+        job_dir,
+        settings,
+        manifest.stems,
+    )
+    manifest.status = "separated"
+    manifest.updated_at = utc_now()
+    manifest.warnings = [
+        warning
+        for warning in manifest.warnings
+        if not warning.startswith("audio-separator")
+    ]
+    if settings.audio_separator_enabled:
+        manifest.warnings.append(
+            "audio-separator specialist pass enabled for guitar/acoustic guitar/keys."
+        )
     write_manifest(job_dir, manifest)
     return manifest

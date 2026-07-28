@@ -23,7 +23,7 @@ Wannabe Stem should prioritize dependable, musician-useful tracks over speculati
 
 ## Stem Quality Strategy
 
-Use local Demucs-style separation as the baseline and keep instrument-specific cleanup modules separate:
+Use local Demucs-style separation as the baseline and keep instrument-specific cleanup modules separate. `audio-separator` is available as an experimental specialist pass, but its built-in Guitar/Piano model currently maps back to `htdemucs_6s.yaml`; treat it as an experimentation layer rather than proof of a dedicated Keys model.
 
 - Bass: clean low-end, reduce low-mid mud, preserve focus.
 - Guitar: one cleaned guitar stem is preferred over unreliable lead/rhythm splits.
@@ -43,11 +43,12 @@ Pipeline:
 1. Ingest: accept MP3/WAV/FLAC/M4A from browser upload.
 2. Normalize: convert to stable internal WAV and capture metadata.
 3. Separate: run local separation engine when built with `INSTALL_DEMUCS=true`.
-4. Remap: convert raw model outputs into Wannabe Stem tracks.
-5. Post-process: run instrument-specific cleanup/rebuild modules.
-6. Analyze: detect chords, bars, tempo, and estimated key.
-7. Review: browser mixer with synchronized playback.
-8. Export: render HD mixes, key-shifted mixes, and stems ZIPs.
+4. Specialist pass: optionally run `audio-separator` for Guitar/Acoustic Guitar/Keys candidates.
+5. Remap: convert raw model outputs into Wannabe Stem tracks.
+6. Post-process: run instrument-specific cleanup/rebuild modules.
+7. Analyze: detect chords, bars, tempo, and estimated key.
+8. Review: browser mixer with synchronized playback.
+9. Export: render HD mixes, key-shifted mixes, and stems ZIPs.
 
 ## UI Direction
 

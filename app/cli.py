@@ -3,8 +3,9 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import subprocess
 
-from app.audio.pipeline import process_file, remap_existing_job
+from app.audio.pipeline import enhance_existing_job_audio_separator, process_file, remap_existing_job
 from app.audio.chords import analyze_job_chords
 from app.core.config import Settings
 
@@ -38,6 +39,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     chords.add_argument("job_dir", help="Path to an existing job folder.")
 
+    enhance = subparsers.add_parser(
+        "enhance-audio-separator",
+        help="Run the audio-separator specialist pass for an existing job.",
+    )
+    enhance.add_argument("job_dir", help="Path to an existing job folder.")
+
+    list_uvr = subparsers.add_parser(
+        "list-audio-separator-models",
+        help="List available audio-separator models.",
+    )
+    list_uvr.add_argument("--filter", default=None, help="Optional stem/model filter, e.g. guitar or piano.")
+    list_uvr.add_argument("--limit", default="10", help="Maximum number of models to show.")
+
     return parser
 
 
@@ -59,6 +73,14 @@ def main() -> None:
     elif args.command == "analyze-chords":
         result = analyze_job_chords(Path(args.job_dir))
         print(json.dumps(result, indent=2))
+    elif args.command == "enhance-audio-separator":
+        manifest = enhance_existing_job_audio_separator(Path(args.job_dir), settings=settings)
+        print(json.dumps(manifest.model_dump(mode="json"), indent=2))
+    elif args.command == "list-audio-separator-models":
+        command = ["audio-separator", "--list_models", "--list_limit", args.limit]
+        if args.filter:
+            command.extend(["--list_filter", args.filter])
+        subprocess.run(command, check=True)
 
 
 if __name__ == "__main__":

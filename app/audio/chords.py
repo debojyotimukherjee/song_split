@@ -15,6 +15,7 @@ SAMPLE_RATE = 22_050
 FRAME_SIZE = 8192
 HOP_SIZE = 2048
 PITCH_NAMES = ("C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B")
+NO_CHORD = "~"
 ACCOMPANIMENT_STEMS = (
     ("guitar", 1.15),
     ("keys", 0.95),
@@ -358,9 +359,9 @@ def _estimate_bar_chord_segments(
 
 def _match_chord(chroma: np.ndarray, bass_chroma: np.ndarray | None = None) -> tuple[str, float, dict[str, float]]:
     if float(np.sum(chroma)) < 0.01:
-        return "N", 0.0, {}
+        return NO_CHORD, 0.0, {}
 
-    best_name = "N"
+    best_name = NO_CHORD
     best_score = -math.inf
     runner_up = -math.inf
     scores: dict[str, float] = {}
@@ -404,7 +405,7 @@ def _resolve_ambiguous_third(chord: str, scores: dict[str, float], confidence: f
 
 
 def _with_bass_note(chord: str, bass_chroma: np.ndarray | None) -> str:
-    if bass_chroma is None or chord == "N" or "/" in chord:
+    if bass_chroma is None or chord == NO_CHORD or "/" in chord:
         return chord
     root = _chord_root(chord)
     if root is None:

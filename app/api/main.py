@@ -262,7 +262,7 @@ def update_chord_segment(job_id: str, index: int, request: ChordUpdateRequest) -
     segments = analysis.get("segments") or []
     if index < 0 or index >= len(segments):
         raise HTTPException(status_code=404, detail="Chord segment not found.")
-    segments[index]["chord"] = request.chord.strip() or segments[index].get("chord", "N")
+    segments[index]["chord"] = request.chord.strip() or segments[index].get("chord", "~")
     analysis["segments"] = segments
     analysis.setdefault("notes", []).append("Contains manual chord corrections.")
     analysis_dir = job_dir / "analysis"
