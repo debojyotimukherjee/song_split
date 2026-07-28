@@ -15,6 +15,7 @@ Wannabe Stem should prioritize dependable, musician-useful tracks over speculati
 - Drums
 - Bass
 - Guitar
+- Acoustic Guitar
 - Keys
 - Other
 
@@ -26,6 +27,7 @@ Use local Demucs-style separation as the baseline and keep instrument-specific c
 
 - Bass: clean low-end, reduce low-mid mud, preserve focus.
 - Guitar: one cleaned guitar stem is preferred over unreliable lead/rhythm splits.
+- Acoustic Guitar: separate module derived from raw guitar plus harmonic content from other, for acoustic-heavy songs where strumming is not captured in Guitar.
 - Keys: use the rebuilt keys path when available, with guitar bleed suppression.
 - Backing Vocal: estimated from the vocal stem and clearly labeled as lower confidence.
 - Other: keep the model catch-all available and audible.
@@ -128,6 +130,7 @@ data/jobs/<job_id>/
 │   ├── drums.wav
 │   ├── bass.wav
 │   ├── guitar.wav
+│   ├── acoustic_guitar.wav
 │   ├── keys.wav
 │   └── other.wav
 ├── stems_raw/
@@ -158,7 +161,7 @@ Completed or in progress:
 1. Dockerized local API and worker.
 2. Browser upload and split workflow with progress/cancel.
 3. Core stem mapping: Main Vocal, Backing Vocal, Drums, Bass, Guitar, Keys, Other.
-4. Instrument-specific cleanup modules for bass, guitar, keys, drums, and other.
+4. Instrument-specific cleanup modules for bass, guitar, acoustic guitar, keys, drums, and other.
 5. Chord, tempo, bar, and key analysis.
 6. Track View, Chord View, Song Key, and Edit Mix UI.
 7. Regular Loop and Practice Zone.

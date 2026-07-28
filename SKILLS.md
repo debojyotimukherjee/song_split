@@ -63,7 +63,7 @@ Use when translating model-native stems into user-facing Wannabe Stem tracks.
 
 Responsibilities:
 
-- Map native stems to Main Vocal, Backing Vocal, Drums, Bass, Guitar, Keys, and Other.
+- Map native stems to Main Vocal, Backing Vocal, Drums, Bass, Guitar, Acoustic Guitar, Keys, and Other.
 - Keep one dependable Guitar track and one dependable Keys track unless a new model proves better.
 - Mark estimated or derived stems with status, confidence, and notes.
 - Keep stems time-aligned and equal length.
@@ -77,13 +77,14 @@ Done when:
 
 ## 5. Instrument-Specific Cleanup
 
-Use when improving Bass, Guitar, Keys, Drums, Other, or vocal-derived stems.
+Use when improving Bass, Guitar, Acoustic Guitar, Keys, Drums, Other, or vocal-derived stems.
 
 Responsibilities:
 
 - Keep instrument cleanup in `app/audio/instruments/`.
 - Bass should reduce rumble and low-mid mud while preserving punch.
 - Guitar should improve focus/presence without over-splitting into fake parts.
+- Acoustic Guitar should live in its own module and may blend raw guitar with harmonic content from other for strummed/acoustic-heavy songs.
 - Keys should prefer the rebuilt keys path and suppress guitar bleed where possible.
 - Other should remain a useful catch-all for instruments not otherwise separated.
 - Keep raw, focus, and rebuild outputs clearly named.

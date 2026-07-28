@@ -379,6 +379,8 @@ def _render_hd_mix(job_dir: Path, request: HdMixRequest) -> Path:
             track_settings.muted = True
         elif request.preset == "minus_guitar" and track_name == "guitar":
             track_settings.muted = True
+        elif request.preset == "minus_guitar" and track_name == "acoustic_guitar":
+            track_settings.muted = True
         elif request.preset == "minus_keys" and track_name == "keys":
             track_settings.muted = True
         if track_settings.muted or track_settings.volume <= 0:
@@ -485,6 +487,7 @@ def _mix_track_files(job_dir: Path) -> dict[str, Path]:
         "drums": job_dir / "stems" / "drums.wav",
         "bass": job_dir / "stems" / "bass.wav",
         "guitar": job_dir / "stems" / "guitar.wav",
+        "acoustic_guitar": job_dir / "stems" / "acoustic_guitar.wav",
         "keys": _preferred_keys_path(job_dir),
         "other": job_dir / "stems" / "other.wav",
     }

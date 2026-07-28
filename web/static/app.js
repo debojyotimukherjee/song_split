@@ -4,6 +4,7 @@ const TRACK_ORDER = [
   "drums",
   "bass",
   "guitar",
+  "acoustic_guitar",
   "keys",
   "other",
 ];
@@ -14,6 +15,7 @@ const TRACK_LABELS = {
   drums: "Drums",
   bass: "Bass",
   guitar: "Guitar",
+  acoustic_guitar: "Acoustic Guitar",
   keys: "Keys",
   other: "Other",
 };
@@ -24,6 +26,7 @@ const TRACK_INSTRUMENTS = {
   drums: "🥁",
   bass: "🎸",
   guitar: "🎸",
+  acoustic_guitar: "🪕",
   keys: "🎹",
   other: "🎷",
 };
@@ -40,6 +43,7 @@ const MIX_PRESETS = {
   drums: { low: 2, mid: 0, high: 2, reverb: 54, compression: 60 },
   bass: { low: 3, mid: -2, high: 0, reverb: 50, compression: 56 },
   guitar: { low: -1, mid: 2, high: 2, reverb: 58, compression: 54 },
+  acoustic_guitar: { low: 1, mid: 2, high: 3, reverb: 58, compression: 52 },
   keys: { low: -2, mid: 1, high: 3, reverb: 60, compression: 52 },
   other: { low: -1, mid: 0, high: 1, reverb: 58, compression: 52 },
 };
@@ -1617,6 +1621,7 @@ function colorForTrack(name) {
     drums: "#e00024",
     bass: "#ffb000",
     guitar: "#ff5a1f",
+    acoustic_guitar: "#ff8a3d",
     keys: "#c81dff",
     other: "#ffcf5a",
   };

@@ -97,6 +97,7 @@ Upload an MP3, WAV, FLAC, or M4A and click **Split Tracks**. The app creates:
 | Drums | Full drum kit |
 | Bass | Cleaned bass stem with mud reduction |
 | Guitar | Cleaned guitar stem |
+| Acoustic Guitar | Estimated acoustic-focused guitar lane for strummed/acoustic parts |
 | Keys | Rebuilt keys/piano stem with guitar bleed suppression |
 | Other | Sax, strings, synths, percussion, accordion, and anything not captured above |
 
