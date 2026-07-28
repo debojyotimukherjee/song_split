@@ -38,14 +38,14 @@ const EQ_BANDS = [
 ];
 
 const MIX_PRESETS = {
-  main_vocal: { low: -1, mid: 2, high: 1, reverb: 62, compression: 64 },
-  backing_vocal: { low: -2, mid: 1, high: 1, reverb: 66, compression: 58 },
-  drums: { low: 2, mid: 0, high: 2, reverb: 54, compression: 60 },
-  bass: { low: 3, mid: -2, high: 0, reverb: 50, compression: 56 },
-  guitar: { low: -1, mid: 2, high: 2, reverb: 58, compression: 54 },
-  acoustic_guitar: { low: 1, mid: 2, high: 3, reverb: 58, compression: 52 },
-  keys: { low: -2, mid: 1, high: 3, reverb: 60, compression: 52 },
-  other: { low: -1, mid: 0, high: 1, reverb: 58, compression: 52 },
+  main_vocal: { volume: 50, low: -1, mid: 2, high: 1, reverb: 62, compression: 64 },
+  backing_vocal: { volume: 50, low: -2, mid: 1, high: 1, reverb: 66, compression: 58 },
+  drums: { volume: 50, low: 2, mid: 0, high: 2, reverb: 54, compression: 60 },
+  bass: { volume: 50, low: 3, mid: -2, high: 0, reverb: 50, compression: 56 },
+  guitar: { volume: 50, low: -1, mid: 2, high: 2, reverb: 58, compression: 54 },
+  acoustic_guitar: { volume: 50, low: 1, mid: 2, high: 3, reverb: 58, compression: 52 },
+  keys: { volume: 50, low: -2, mid: 1, high: 3, reverb: 60, compression: 52 },
+  other: { volume: 50, low: -1, mid: 0, high: 1, reverb: 58, compression: 52 },
 };
 
 const KEY_OPTIONS = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
@@ -415,7 +415,7 @@ function renderTracks(job) {
       <div class="track-controls">
         <button class="track-button mute" type="button">Mute</button>
         <button class="track-button solo" type="button">S</button>
-        <input class="volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="${TRACK_LABELS[name]} volume" />
+        <input class="volume" type="range" min="0" max="2" step="0.01" value="1" aria-label="${TRACK_LABELS[name]} volume" />
       </div>
     `;
 
@@ -450,7 +450,9 @@ function renderTracks(job) {
     });
     row.querySelector(".volume").addEventListener("input", (event) => {
       track.volume = Number(event.target.value);
+      ensureMixSettings(name).volume = gainToVolumeLevel(track.volume);
       applyTrackMix();
+      renderEditMix();
     });
 
     drawWaveform(row.querySelector("canvas"), audio.src, colorForTrack(name));
@@ -725,7 +727,30 @@ function ensureMixSettings(trackName) {
 }
 
 function neutralMixSettings() {
-  return { low: 0, mid: 0, high: 0, reverb: 50, compression: 50 };
+  return { volume: 50, low: 0, mid: 0, high: 0, reverb: 50, compression: 50 };
+}
+
+function normalizeVolumeLevel(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 50;
+  return Math.max(0, Math.min(100, numeric));
+}
+
+function normalizeSavedVolumeLevel(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 50;
+  if (numeric >= 0 && numeric <= 2) return gainToVolumeLevel(numeric);
+  return normalizeVolumeLevel(numeric);
+}
+
+function volumeLevelToGain(level) {
+  return Math.max(0, Math.min(2, normalizeVolumeLevel(level) / 50));
+}
+
+function gainToVolumeLevel(gain) {
+  const numeric = Number(gain);
+  if (!Number.isFinite(numeric)) return 50;
+  return Math.max(0, Math.min(100, numeric * 50));
 }
 
 function applyEqToAllTracks() {
@@ -736,6 +761,9 @@ function applyEqToAllTracks() {
 
 function applyEqToTrack(track) {
   const settings = ensureMixSettings(track.name);
+  settings.volume = normalizeVolumeLevel(settings.volume);
+  track.volume = volumeLevelToGain(settings.volume);
+  track.row.querySelector(".volume").value = String(track.volume);
   if (track.eqNodes) {
     for (const band of EQ_BANDS) {
       track.eqNodes[band.key].gain.value = Number(settings[band.key]) || 0;
@@ -759,17 +787,24 @@ function applyEqToTrack(track) {
 
 function setEqValue(trackName, bandKey, value) {
   const settings = ensureMixSettings(trackName);
-  settings[bandKey] = ["reverb", "compression"].includes(bandKey)
-    ? Math.max(0, Math.min(100, Number(value) || 50))
-    : Math.max(-12, Math.min(12, Number(value) || 0));
+  const numeric = Number(value);
+  const fallback = ["volume", "reverb", "compression"].includes(bandKey) ? 50 : 0;
+  const safeValue = Number.isFinite(numeric) ? numeric : fallback;
+  settings[bandKey] = ["volume", "reverb", "compression"].includes(bandKey)
+    ? Math.max(0, Math.min(100, safeValue))
+    : Math.max(-12, Math.min(12, safeValue));
   const track = state.tracks.get(trackName);
-  if (track) applyEqToTrack(track);
+  if (track) {
+    applyEqToTrack(track);
+    applyTrackMix();
+  }
 }
 
 function resetEq(trackName) {
   state.mixSettings.set(trackName, neutralMixSettings());
   const track = state.tracks.get(trackName);
   if (track) applyEqToTrack(track);
+  applyTrackMix();
   renderEditMix();
 }
 
@@ -777,6 +812,7 @@ function applyPreset(trackName) {
   state.mixSettings.set(trackName, { ...(MIX_PRESETS[trackName] || neutralMixSettings()) });
   const track = state.tracks.get(trackName);
   if (track) applyEqToTrack(track);
+  applyTrackMix();
   renderEditMix();
 }
 
@@ -810,9 +846,10 @@ async function loadMixSettings() {
         ...ensureMixSettings(trackName),
         ...trackSettings,
       });
+      state.mixSettings.get(trackName).volume = normalizeSavedVolumeLevel(trackSettings.volume);
       const track = state.tracks.get(trackName);
       if (track) {
-        track.volume = Number(trackSettings.volume ?? track.volume);
+        track.volume = volumeLevelToGain(state.mixSettings.get(trackName).volume);
         track.muted = Boolean(trackSettings.muted);
         track.solo = Boolean(trackSettings.solo);
         track.row.querySelector(".volume").value = String(track.volume);
@@ -850,9 +887,10 @@ async function saveMixSettings() {
 function serializeMixSettings() {
   const tracks = {};
   for (const track of state.tracks.values()) {
+    const settings = ensureMixSettings(track.name);
+    settings.volume = normalizeVolumeLevel(settings.volume);
     tracks[track.name] = {
-      ...ensureMixSettings(track.name),
-      volume: track.volume,
+      ...settings,
       muted: track.muted,
       solo: track.solo,
     };
@@ -911,7 +949,7 @@ function buildHdMixPayload() {
   for (const track of state.tracks.values()) {
     const eq = ensureMixSettings(track.name);
     tracks[track.name] = {
-      volume: track.volume,
+      volume: volumeLevelToGain(eq.volume),
       muted: track.muted || (hasSolo && !track.solo),
       low: eq.low,
       mid: eq.mid,
@@ -1006,6 +1044,11 @@ function renderEditMix() {
         <strong>${TRACK_LABELS[name]}</strong>
       </div>
       <div class="eq-bank">
+        <label class="eq-control volume-control">
+          <span>Vol</span>
+          <input type="range" min="0" max="100" step="1" value="${settings.volume ?? 50}" data-track="${name}" data-band="volume" />
+          <strong>${formatPercent(settings.volume ?? 50)}</strong>
+        </label>
         ${EQ_BANDS.map((band) => `
           <label class="eq-control">
             <span>${band.label}</span>
@@ -1036,7 +1079,7 @@ function renderEditMix() {
   els.editMixDeck.querySelectorAll("[data-track][data-band]").forEach((slider) => {
     slider.addEventListener("input", (event) => {
       setEqValue(event.target.dataset.track, event.target.dataset.band, event.target.value);
-      const valueText = ["reverb", "compression"].includes(event.target.dataset.band)
+      const valueText = ["volume", "reverb", "compression"].includes(event.target.dataset.band)
         ? formatPercent(event.target.value)
         : formatDb(event.target.value);
       event.target.closest(".eq-control")?.querySelector("strong").replaceChildren(valueText);
