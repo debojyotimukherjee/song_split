@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Weekend Stems</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260727-practice-zone" />
+    <title>Wannabe Stem</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260727-edit-volume" />
   </head>
   <body>
     <main class="app-shell">
@@ -12,7 +12,7 @@
         <div class="brand">
           <div class="brand-mark">WS</div>
           <div>
-            <h1>Weekend Stems</h1>
+            <h1>Wannabe Stem</h1>
             <p>Wannabe Weekenders rehearsal lab</p>
           </div>
         </div>
@@ -21,6 +21,7 @@
           <span class="instrument-icon" aria-label="Sax" title="Sax">🎷</span>
           <span class="instrument-icon" aria-label="Piano" title="Piano">🎹</span>
           <span class="instrument-icon" aria-label="Guitar" title="Guitar">🎸</span>
+          <span class="instrument-icon" aria-label="Acoustic Guitar" title="Acoustic Guitar">🪕</span>
           <span class="instrument-icon" aria-label="Bass" title="Bass">🎸</span>
           <span class="instrument-icon" aria-label="Drums" title="Drums">🥁</span>
           <span class="instrument-icon" aria-label="Accordion" title="Accordion">🪗</span>
@@ -73,6 +74,10 @@
             <label><input id="metronomeToggle" type="checkbox" /> Click</label>
           </div>
           <span id="globalLoopStatus" class="global-loop-status">Loop off</span>
+          <button id="globalShiftedMixButton" class="shifted-mix-status" type="button" disabled title="Shifted mix status">
+            <span class="shifted-mix-icon" aria-label="Bass guitar">🎸</span>
+            <span id="globalShiftedMixText">No shifted mix</span>
+          </button>
         </header>
 
         <nav class="view-tabs" aria-label="Mixer views">
@@ -183,6 +188,6 @@
       </section>
     </main>
 
-    <script src="/static/app.js?v=20260727-practice-zone"></script>
+    <script src="/static/app.js?v=20260727-edit-volume"></script>
   </body>
 </html>

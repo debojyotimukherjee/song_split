@@ -1,76 +1,69 @@
-# Weekend Stems Agent
+# Wannabe Stem Agent
 
 ## Mission
 
-Build Weekend Stems: a local-first music stem separation system for Wannabe Weekenders. A user should be able to drop an MP3 file into the app, wait for processing, and receive synchronized audio tracks that can be played, muted, soloed, mixed, and exported.
+Build Wannabe Stem: a local-first music practice system for Wannabe Weekenders. A non-technical bandmate should be able to run it with Docker, open a browser, upload a song, split it into useful tracks, and practice with chords, loops, tempo, key, and mix controls.
 
-The product direction is similar to Moises in spirit, but scoped first as a local desktop/web app for personal music practice, transcription, rehearsal, remix sketching, and arrangement study.
+The product is Moises-like in spirit, but intentionally local and band-rehearsal focused. Nothing should require uploading a song to a cloud service.
 
-## Target Stems
+## Current Product Direction
 
-Desired user-facing tracks:
+Wannabe Stem should prioritize dependable, musician-useful tracks over speculative over-separation. Earlier experiments with Guitar 1/Guitar 2 and Keys 1/Keys 2 caused bleed and mushy results, so the current user-facing track list is:
 
 - Main Vocal
 - Backing Vocal
 - Drums
 - Bass
-- Guitar 1
-- Guitar 2
-- Keys 1
-- Keys 2
+- Guitar
+- Acoustic Guitar
+- Keys
 - Other
 
-Important modeling note: most mature local open-source music source separation models natively produce 4 to 6 stems, commonly vocals, drums, bass, guitar, piano/keys, and other. The named target tracks should be treated as a product goal reached in stages:
+`Other` is important. It should catch sax, accordion, strings, synths, extra percussion, and anything not reliably represented by the named tracks.
 
-1. MVP: produce reliable core stems.
-2. Expansion: split guitar/piano/keys further when confidence is high.
-3. Advanced: separate main vs backing vocals and Guitar 1 vs Guitar 2 using specialized models, heuristics, or user-assisted labeling.
+## Stem Quality Strategy
 
-## Recommended MVP
+Use local Demucs-style separation as the baseline and keep instrument-specific cleanup modules separate:
 
-Start with six internal stems:
+- Bass: clean low-end, reduce low-mid mud, preserve focus.
+- Guitar: one cleaned guitar stem is preferred over unreliable lead/rhythm splits.
+- Acoustic Guitar: separate module derived from raw guitar plus harmonic content from other, for acoustic-heavy songs where strumming is not captured in Guitar.
+- Keys: use the rebuilt keys path when available, with guitar bleed suppression.
+- Backing Vocal: estimated from the vocal stem and clearly labeled as lower confidence.
+- Other: keep the model catch-all available and audible.
 
-- vocals
-- drums
-- bass
-- guitar
-- keys or piano
-- other
-
-Then expose the desired eight-track layout with clear fallbacks:
-
-- Main Vocal: generated from vocals, later refined with lead-vocal separation.
-- Backing Vocal: estimated from vocals with a side/wide extraction in the MVP; later refined with lead/backing vocal separation.
-- Drums: generated directly.
-- Bass: generated directly.
-- Guitar 1: generated from guitar.
-- Guitar 2: optional duplicate/refinement lane in MVP; later split by timbre/pan/frequency.
-- Keys 1: generated from piano/keys.
-- Keys 2: optional duplicate/refinement lane in MVP; later split by timbre/pan/frequency.
-- Other: generated from the model's catch-all `other` stem for sax, accordion, percussion, strings, synths, and anything not captured by named tracks.
+Treat all derived stems as confidence-scored outputs. Do not pretend a heuristic split is ground truth.
 
 ## Local Architecture
 
-The system should be designed as a pipeline:
+The system is a Dockerized local app with a FastAPI backend, static browser UI, and CLI worker commands.
 
-1. Ingest: accept MP3/WAV/FLAC/M4A from a watched folder or browser drop zone.
-2. Normalize: convert to a stable internal WAV format, preserve original metadata, and calculate duration/sample rate/channels.
-3. Separate: run a local source-separation engine.
-4. Post-process: loudness normalize, trim/pad stems to exact alignment, detect silence, and write metadata.
-5. Package: create per-stem WAV/MP3 exports and a project manifest.
-6. Review: provide a mixer UI for playback, mute/solo, volume, waveform preview, and export.
+Pipeline:
 
-## Model Strategy
+1. Ingest: accept MP3/WAV/FLAC/M4A from browser upload.
+2. Normalize: convert to stable internal WAV and capture metadata.
+3. Separate: run local separation engine when built with `INSTALL_DEMUCS=true`.
+4. Remap: convert raw model outputs into Wannabe Stem tracks.
+5. Post-process: run instrument-specific cleanup/rebuild modules.
+6. Analyze: detect chords, bars, tempo, and estimated key.
+7. Review: browser mixer with synchronized playback.
+8. Export: render HD mixes, key-shifted mixes, and stems ZIPs.
 
-Use a pluggable model runner so the project can swap engines without rewriting the app.
+## UI Direction
 
-Initial candidates:
+The UI should feel like a rehearsal tool, not a marketing page. Keep the red/black Wannabe Stem theme, icon-forward instrument controls, and the four main views:
 
-- Demucs `htdemucs_6s`: good first baseline for local six-stem separation.
-- ONNX-based Demucs exports: useful for packaging and avoiding a full PyTorch runtime.
-- UVR-style model ensembles: useful later for higher-quality vocals and backing-vocal experiments.
+- Track View: synchronized waveform rows with mute, solo, and volume.
+- Chord View: bar-based chord chart, four bars per row, current bar tracking playback.
+- Song Key: detected key plus chart transposition and shifted mix rendering.
+- Edit Mix: per-track EQ, reverb, compression, mute, HD master, exports, loop, and Practice Zone.
 
-Keep the first version boring and dependable: one model runner, one queue, one output format, predictable job folders.
+Practice tools:
+
+- Regular Loop repeats a selected start/end range.
+- Practice Zone uses the same range without looping; selected tracks mute only inside that range.
+- Count-in and click should only sound during playback.
+- Active ranges should be visible in green on chord bars.
 
 ## Suggested Folder Structure
 
@@ -79,97 +72,103 @@ song_split/
 ├── AGENT.md
 ├── SKILLS.md
 ├── README.md
+├── Dockerfile
+├── docker-compose.yml
 ├── pyproject.toml
-├── .env.example
+├── requirements/
+│   ├── base.txt
+│   └── separation.txt
 ├── app/
 │   ├── api/
-│   │   ├── main.py
-│   │   ├── routes/
-│   │   └── schemas/
-│   ├── core/
-│   │   ├── config.py
-│   │   ├── jobs.py
-│   │   ├── manifests.py
-│   │   └── paths.py
+│   │   └── main.py
 │   ├── audio/
+│   │   ├── chords.py
 │   │   ├── ingest.py
-│   │   ├── normalize.py
+│   │   ├── pipeline.py
 │   │   ├── separate.py
-│   │   ├── postprocess.py
-│   │   └── export.py
-│   ├── models/
-│   │   ├── base.py
-│   │   ├── demucs_runner.py
-│   │   └── onnx_runner.py
-│   └── workers/
-│       └── queue.py
+│   │   └── instruments/
+│   │       ├── bass.py
+│   │       ├── bleed.py
+│   │       ├── common.py
+│   │       ├── drums.py
+│   │       ├── guitar.py
+│   │       ├── keys.py
+│   │       └── other.py
+│   ├── cli.py
+│   └── core/
+│       ├── config.py
+│       ├── jobs.py
+│       ├── manifests.py
+│       └── paths.py
 ├── web/
-│   ├── package.json
-│   ├── src/
-│   │   ├── App.tsx
-│   │   ├── components/
-│   │   ├── audio/
-│   │   └── styles/
-│   └── public/
-├── data/
-│   ├── inbox/
-│   ├── jobs/
-│   ├── models/
-│   └── exports/
-├── scripts/
-│   ├── dev_backend.sh
-│   ├── dev_frontend.sh
-│   └── smoke_test_separation.sh
-├── tests/
-│   ├── unit/
-│   └── integration/
-└── docs/
-    ├── architecture.md
-    ├── stem-taxonomy.md
-    └── model-notes.md
+│   ├── index.html
+│   └── static/
+│       ├── app.js
+│       └── styles.css
+└── data/
+    ├── inbox/
+    ├── jobs/
+    └── models/
 ```
 
 ## Data Layout
 
-Each processed song should get one job folder:
+Each processed song gets one job folder:
 
 ```text
 data/jobs/<job_id>/
 ├── input/
-│   └── original.mp3
+│   └── original.<ext>
 ├── working/
 │   └── normalized.wav
+├── analysis/
+│   ├── chords.json
+│   └── mix_settings.json
 ├── stems/
 │   ├── main_vocal.wav
 │   ├── backing_vocal.wav
 │   ├── drums.wav
 │   ├── bass.wav
 │   ├── guitar.wav
+│   ├── acoustic_guitar.wav
 │   ├── keys.wav
 │   └── other.wav
+├── stems_raw/
+├── stems_focus/
+├── stems_rebuild/
 ├── exports/
-│   ├── stems.zip
-│   └── mix.wav
 └── manifest.json
 ```
 
-The manifest should record input filename, duration, sample rate, model name/version, processing settings, generated stems, confidence/status per target stem, and any warnings.
+The manifest should record input filename, duration, sample rate, model name/version, processing settings, generated stems, confidence/status per target stem, and warnings.
 
 ## Implementation Principles
 
 - Keep all audio local by default.
+- Prefer Docker-first workflows for non-technical users.
 - Never overwrite source uploads.
-- Make every processing step resumable.
-- Track model/version/settings in the manifest for reproducibility.
+- Make long-running jobs visible, cancellable, and recoverable.
+- Track model/version/settings in manifests for reproducibility.
 - Prefer WAV internally; export MP3 only as a delivery option.
-- Design for long-running jobs with progress events.
-- Treat advanced stems as confidence-scored outputs, not guaranteed truth.
+- Keep stems synchronized by duration and playback position.
+- Favor one reliable musician-useful track over multiple confusing approximations.
+- Keep experimental model work separate from the stable app path.
 
-## First Build Milestones
+## Current Milestones
 
-1. CLI proof of concept: separate one MP3 into six stems.
-2. Job manifest: persist job status and output paths.
-3. Local API: upload/drop file and poll processing status.
-4. Mixer UI: play stems in sync with mute/solo/volume.
-5. Export: download individual stems and zip.
-6. Advanced splitting experiments: main/backing vocal, guitar 1/2, keys 1/2.
+Completed or in progress:
+
+1. Dockerized local API and worker.
+2. Browser upload and split workflow with progress/cancel.
+3. Core stem mapping: Main Vocal, Backing Vocal, Drums, Bass, Guitar, Keys, Other.
+4. Instrument-specific cleanup modules for bass, guitar, acoustic guitar, keys, drums, and other.
+5. Chord, tempo, bar, and key analysis.
+6. Track View, Chord View, Song Key, and Edit Mix UI.
+7. Regular Loop and Practice Zone.
+8. HD mix and export presets.
+
+Next likely areas:
+
+1. Improve keys quality with a dedicated model or stronger reconstruction path.
+2. Make install/start friendlier for non-technical bandmates.
+3. Add more repeatable audio quality test clips and comparison notes.

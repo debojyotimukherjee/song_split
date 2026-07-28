@@ -6,6 +6,7 @@ from pathlib import Path
 from threading import Event
 from typing import Callable
 
+from app.audio.instruments.acoustic_guitar import create_acoustic_guitar_stem
 from app.audio.instruments.bass import create_bass_stem
 from app.audio.instruments.drums import create_drums_stem
 from app.audio.instruments.guitar import create_guitar_stem
@@ -21,6 +22,7 @@ TARGET_STEMS = [
     "drums",
     "bass",
     "guitar",
+    "acoustic_guitar",
     "keys",
     "other",
 ]
@@ -211,6 +213,24 @@ def map_demucs_output(model_output_dir: Path, job_dir: Path) -> list[StemManifes
             )
         )
         mapped_targets.add("guitar")
+
+        acoustic_file = stems_dir / "acoustic_guitar.wav"
+        create_acoustic_guitar_stem(guitar_file, raw_stems_dir / "other.wav", acoustic_file)
+        manifests.append(
+            StemManifest(
+                name="acoustic_guitar",
+                path=str(acoustic_file),
+                status="estimated",
+                source_stem="guitar+other",
+                confidence=0.62,
+                notes=(
+                    "Estimated acoustic-focused guitar lane built from the raw guitar stem "
+                    "with a light harmonic blend from the raw other stem. Useful for songs "
+                    "where acoustic strumming lands outside Demucs' guitar output."
+                ),
+            )
+        )
+        mapped_targets.add("acoustic_guitar")
 
     other_file = raw_stems_dir / "other.wav"
     if other_file.exists():

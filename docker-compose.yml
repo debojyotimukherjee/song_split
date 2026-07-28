@@ -3,7 +3,7 @@ services:
     build:
       context: .
       args:
-        INSTALL_DEMUCS: ${INSTALL_DEMUCS:-false}
+        INSTALL_DEMUCS: ${INSTALL_DEMUCS:-true}
     ports:
       - "8000:8000"
     volumes:
@@ -17,7 +17,7 @@ services:
     build:
       context: .
       args:
-        INSTALL_DEMUCS: ${INSTALL_DEMUCS:-false}
+        INSTALL_DEMUCS: ${INSTALL_DEMUCS:-true}
     volumes:
       - ./data:/workspace/data
     environment:

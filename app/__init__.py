@@ -1,1 +1,1 @@
-"""Weekend Stems application package."""
+"""Wannabe Stem application package."""

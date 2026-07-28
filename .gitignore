@@ -7,5 +7,6 @@ data/jobs/
 data/inbox/
 data/models/
 data/exports/
+dist/
 .DS_Store
 **/.DS_Store
