@@ -85,6 +85,7 @@ const state = {
   chords: [],
   tempo: null,
   detectedKey: null,
+  detectedKeyLabel: null,
   targetKey: null,
   playbackRate: 1,
   audioContext: null,
@@ -167,6 +168,12 @@ const els = {
   splitProgressBar: document.querySelector("#splitProgressBar"),
   splitProgressMessage: document.querySelector("#splitProgressMessage"),
   splitProgressValue: document.querySelector("#splitProgressValue"),
+  songInfoPanel: document.querySelector("#songInfoPanel"),
+  songInfoArt: document.querySelector("#songInfoArt"),
+  songInfoSource: document.querySelector("#songInfoSource"),
+  songInfoHeading: document.querySelector("#songInfoHeading"),
+  songInfoSummary: document.querySelector("#songInfoSummary"),
+  songInfoLink: document.querySelector("#songInfoLink"),
   sidebarResizeHandle: document.querySelector("#sidebarResizeHandle"),
 };
 
@@ -329,6 +336,7 @@ async function loadChords(jobId) {
   state.chords = [];
   state.tempo = null;
   state.detectedKey = null;
+  state.detectedKeyLabel = null;
   state.targetKey = null;
   state.activeChordIndex = -1;
   state.activeBarIndex = -1;
@@ -346,7 +354,8 @@ async function loadChords(jobId) {
     const analysis = await response.json();
     state.tempo = normalizeTempo(analysis.tempo);
     state.chords = analysis.segments || [];
-    state.detectedKey = detectSongKey(state.chords);
+    state.detectedKey = normalizeDetectedKey(analysis.key);
+    state.detectedKeyLabel = normalizeDetectedKeyLabel(analysis.key, state.detectedKey);
     state.targetKey = state.detectedKey;
     updateTempoReadout();
     updateKeyReadout();
@@ -1457,6 +1466,7 @@ function renderKeyOptions() {
 }
 
 function setTargetKey(key) {
+  if (!state.detectedKey) return;
   state.targetKey = KEY_OPTIONS.includes(key) ? key : state.detectedKey;
   updateKeyReadout();
   updateAudioKeyStatus();
@@ -1465,34 +1475,33 @@ function setTargetKey(key) {
 
 function updateKeyReadout() {
   const detected = state.detectedKey || "--";
+  const detectedLabel = state.detectedKeyLabel || detected;
   const target = state.targetKey || state.detectedKey || "C";
   const semitones = transposeSemitones();
-  els.detectedKey.textContent = detected;
+  els.detectedKey.textContent = detectedLabel;
   els.targetKey.value = KEY_OPTIONS.includes(target) ? target : "C";
+  els.targetKey.disabled = !state.detectedKey;
+  els.resetKeyButton.disabled = !state.detectedKey;
+  els.renderShiftedButton.disabled = !state.detectedKey;
+  if (!state.detectedKey) {
+    els.transposeSummary.textContent = "Song key is not available for this song.";
+    return;
+  }
   els.transposeSummary.textContent = semitones === 0
-    ? `Showing original key: ${detected}`
-    : `Showing ${target}, transposed ${formatSemitones(semitones)} from ${detected}`;
+    ? `Showing original key: ${detectedLabel}`
+    : `Showing ${target}, transposed ${formatSemitones(semitones)} from ${detectedLabel}`;
 }
 
 function updateAudioKeyStatus() {
   if (!els.audioKeyStatus) return;
+  if (!state.detectedKey) {
+    els.audioKeyStatus.textContent = "Audio key shifting is disabled until an original song key is set manually.";
+    return;
+  }
   const semitones = transposeSemitones();
   els.audioKeyStatus.textContent = semitones === 0
     ? "Tracks are playing in the original recorded key."
     : `Chart is transposed ${formatSemitones(semitones)}; audio is still original until shifted tracks are rendered.`;
-}
-
-function detectSongKey(chords) {
-  const scores = new Array(12).fill(0);
-  for (const segment of chords) {
-    const parsed = parseChord(segment.chord);
-    if (!parsed) continue;
-    const duration = Math.max(0.25, (segment.end || 0) - (segment.start || 0));
-    scores[parsed.pc] += duration;
-    scores[(parsed.pc + (parsed.minor ? 3 : 9)) % 12] += duration * 0.25;
-  }
-  const best = scores.reduce((bestIndex, score, index) => score > scores[bestIndex] ? index : bestIndex, 0);
-  return KEY_OPTIONS[best];
 }
 
 function transposeChord(chord) {
@@ -1508,7 +1517,20 @@ function displayChord(chord) {
   return transposeChord(normalized);
 }
 
+function normalizeDetectedKey(key) {
+  if (!key) return null;
+  if (typeof key === "string") return NOTE_TO_PC[key] == null ? null : key;
+  const tonic = key.tonic;
+  return NOTE_TO_PC[tonic] == null ? null : tonic;
+}
+
+function normalizeDetectedKeyLabel(key, fallback) {
+  if (!key || typeof key === "string") return fallback;
+  return key.label || fallback;
+}
+
 function transposeSemitones() {
+  if (!state.detectedKey) return 0;
   const from = NOTE_TO_PC[state.detectedKey] ?? 0;
   const to = NOTE_TO_PC[state.targetKey || state.detectedKey] ?? from;
   return ((to - from + 18) % 12) - 6;
@@ -1563,6 +1585,8 @@ async function uploadSelectedFile(engine) {
     : "Uploading song...";
   try {
     if (engine === "demucs") {
+      showSongInfoLoading(file.name);
+      loadSongInfo(file.name);
       const response = await fetch("/api/splits", { method: "POST", body: form });
       if (!response.ok) {
         els.jobMeta.textContent = await response.text();
@@ -1621,7 +1645,10 @@ function setUploadBusy(isBusy, showProgress) {
   els.splitButton.textContent = isBusy ? "Working..." : "Split Tracks";
   els.splitProgressPanel.hidden = !showProgress;
   els.cancelSplitButton.disabled = !isBusy;
-  if (!showProgress) updateSplitProgress({ progress: 0, message: "Preparing song..." });
+  if (!showProgress) {
+    updateSplitProgress({ progress: 0, message: "Preparing song..." });
+    clearSongInfo();
+  }
 }
 
 async function pollSplitProgress() {
@@ -1676,8 +1703,82 @@ function clearSplitPollTimer() {
 function updateSplitProgress(task) {
   const progress = Math.max(0, Math.min(100, Number(task.progress) || 0));
   els.splitProgressBar.value = progress;
-  els.splitProgressValue.textContent = `${Math.round(progress)}%`;
-  els.splitProgressMessage.textContent = task.message || "Working...";
+  els.splitProgressValue.textContent = task.progress_estimated
+    ? `~${Math.round(progress)}%`
+    : `${Math.round(progress)}%`;
+  const eta = Number(task.eta_seconds);
+  const etaText = task.progress_estimated && Number.isFinite(eta) && eta > 0
+    ? ` About ${formatEta(eta)} left.`
+    : "";
+  els.splitProgressMessage.textContent = `${task.message || "Working..."}${etaText}`;
+}
+
+function showSongInfoLoading(filename) {
+  if (!els.songInfoPanel) return;
+  els.songInfoPanel.hidden = false;
+  els.songInfoSource.textContent = "Song notes";
+  els.songInfoHeading.textContent = cleanSongInfoHeading(filename);
+  els.songInfoSummary.textContent = "Looking up artist and song notes while Wannabe Stem works on the split.";
+  els.songInfoLink.hidden = true;
+  els.songInfoLink.removeAttribute("href");
+  els.songInfoArt.classList.remove("has-image");
+  els.songInfoArt.style.backgroundImage = "";
+}
+
+async function loadSongInfo(filename) {
+  if (!els.songInfoPanel) return;
+  try {
+    const response = await fetch(`/api/song-info?filename=${encodeURIComponent(filename)}`);
+    if (!response.ok) return;
+    const info = await response.json();
+    renderSongInfo(info);
+  } catch {
+    renderSongInfo({
+      source: "Local",
+      heading: cleanSongInfoHeading(filename),
+      summary: "Internet lookup is unavailable right now, but the split is still running normally.",
+    });
+  }
+}
+
+function renderSongInfo(info) {
+  if (!els.songInfoPanel) return;
+  els.songInfoPanel.hidden = false;
+  els.songInfoSource.textContent = info.source || "Song notes";
+  els.songInfoHeading.textContent = info.heading || info.title || "Song notes";
+  els.songInfoSummary.textContent = info.summary || "No short song notes found yet.";
+  if (info.url) {
+    els.songInfoLink.hidden = false;
+    els.songInfoLink.href = info.url;
+  } else {
+    els.songInfoLink.hidden = true;
+    els.songInfoLink.removeAttribute("href");
+  }
+  if (info.image_url) {
+    els.songInfoArt.classList.add("has-image");
+    els.songInfoArt.style.backgroundImage = `linear-gradient(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.24)), url("${info.image_url}")`;
+  } else {
+    els.songInfoArt.classList.remove("has-image");
+    els.songInfoArt.style.backgroundImage = "";
+  }
+}
+
+function clearSongInfo() {
+  if (!els.songInfoPanel) return;
+  els.songInfoPanel.hidden = true;
+}
+
+function cleanSongInfoHeading(filename) {
+  return (filename || "Selected song")
+    .replace(/\.[a-z0-9]+$/i, "")
+    .replace(/[_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatEta(seconds) {
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return minutes === 1 ? "1 minute" : `${minutes} minutes`;
 }
 
 async function drawWaveform(canvas, url, color) {

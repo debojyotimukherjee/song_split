@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Wannabe Stem</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260728-pane-drag-resize" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260728-song-info-progress" />
   </head>
   <body>
     <main class="app-shell">
@@ -49,6 +49,15 @@
               <strong id="splitProgressValue">0%</strong>
             </div>
             <progress id="splitProgressBar" class="split-progress-bar" max="100" value="0"></progress>
+            <div id="songInfoPanel" class="song-info-panel" hidden>
+              <div class="song-info-art" id="songInfoArt" aria-hidden="true"></div>
+              <div class="song-info-copy">
+                <span id="songInfoSource" class="song-info-source">Song notes</span>
+                <strong id="songInfoHeading">Looking up song info...</strong>
+                <p id="songInfoSummary">If the internet is available, artist and song notes will appear here while the split runs.</p>
+                <a id="songInfoLink" href="#" target="_blank" rel="noreferrer" hidden>Read more</a>
+              </div>
+            </div>
             <button id="cancelSplitButton" class="secondary-button" type="button">Cancel Split</button>
           </div>
         </section>
@@ -128,7 +137,7 @@
         <section id="keyView" class="view-panel key-view" aria-label="Song key view">
           <div class="key-console">
             <div>
-              <span class="stage-label">Estimated Song Key</span>
+              <span class="stage-label">Song Key</span>
               <strong id="detectedKey">--</strong>
             </div>
             <label class="key-picker" for="targetKey">
@@ -139,7 +148,7 @@
 
           <div class="key-summary">
             <span id="transposeSummary">No transposition</span>
-            <button id="resetKeyButton" class="secondary-button" type="button">Reset to original key</button>
+            <button id="resetKeyButton" class="secondary-button" type="button">Reset chart key</button>
           </div>
           <div class="key-audio-note">
             <strong>Audio Key</strong>
@@ -201,6 +210,6 @@
       </section>
     </main>
 
-    <script src="/static/app.js?v=20260728-pane-drag-resize"></script>
+    <script src="/static/app.js?v=20260728-song-info-progress"></script>
   </body>
 </html>

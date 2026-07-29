@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
+import time
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 import zipfile
 from threading import Event, Lock, Thread
 from typing import Literal
@@ -36,6 +41,9 @@ class SplitTask:
     message: str = "Queued"
     error: str | None = None
     cancel_event: Event = field(default_factory=Event)
+    stage: str = "queued"
+    stage_started_at: float | None = None
+    estimated_stage_seconds: float | None = None
 
 
 split_tasks: dict[str, SplitTask] = {}
@@ -140,6 +148,18 @@ def start_split(file: UploadFile = File(...)) -> dict:
 def get_split_status(task_id: str) -> dict:
     task = _get_split_task(task_id)
     return _task_payload(task)
+
+
+@app.get("/api/song-info")
+def get_song_info(filename: str) -> dict:
+    parsed = _parse_song_filename(filename)
+    query = " ".join(part for part in (parsed["title"], parsed["artist"], "song") if part).strip()
+    if not query:
+        return _offline_song_info(parsed, "Song details will appear here when the file name has enough clues.")
+    try:
+        return _fetch_wikipedia_song_info(query, parsed)
+    except Exception:
+        return _offline_song_info(parsed, "Internet lookup is unavailable right now, but the split is still running normally.")
 
 
 @app.post("/api/splits/{task_id}/cancel")
@@ -320,11 +340,14 @@ def _run_split_task(task_id: str, upload_path: Path, settings: Settings) -> None
     def progress(percent: int, message: str) -> None:
         task.progress = max(task.progress, min(percent, 98))
         task.message = message
+        _update_split_stage_estimate(task, settings)
 
     try:
         task.state = "running"
         task.progress = 5
         task.message = "Preparing song..."
+        task.stage = "preparing"
+        task.stage_started_at = time.monotonic()
         manifest = process_file(
             upload_path,
             settings=settings,
@@ -337,10 +360,14 @@ def _run_split_task(task_id: str, upload_path: Path, settings: Settings) -> None
             raise SplitCancelled("Split was cancelled.")
         task.progress = 88
         task.message = "Detecting chords and tempo..."
+        task.stage = "chords"
+        task.stage_started_at = time.monotonic()
+        task.estimated_stage_seconds = None
         analyze_job_chords(settings.jobs_dir / manifest.job_id)
         task.state = "done"
         task.progress = 100
         task.message = "Split complete."
+        task.stage = "done"
         task.job_id = manifest.job_id
     except SplitCancelled as exc:
         task.state = "cancelled"
@@ -366,6 +393,134 @@ def _mark_manifest_status(settings: Settings, job_id: str | None, status: str, w
     manifest.updated_at = utc_now()
     manifest.warnings.append(warning)
     write_manifest(job_dir, manifest)
+
+
+def _parse_song_filename(filename: str) -> dict[str, str]:
+    stem = Path(filename or "").stem
+    cleaned = re.sub(r"[_]+", " ", stem)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    cleaned = re.sub(
+        r"\s*[\[(](official audio|official video|audio|video|lyrics?|remaster(?:ed)?|hd|hq)[\])]\s*",
+        " ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -")
+    artist = ""
+    title = cleaned
+    if " - " in cleaned:
+        artist, title = [part.strip() for part in cleaned.split(" - ", 1)]
+    return {"artist": artist, "title": title, "display": cleaned}
+
+
+def _fetch_wikipedia_song_info(query: str, parsed: dict[str, str]) -> dict:
+    params = urlencode(
+        {
+            "action": "query",
+            "generator": "search",
+            "gsrsearch": query,
+            "gsrlimit": "1",
+            "prop": "extracts|pageimages|info",
+            "exintro": "1",
+            "explaintext": "1",
+            "pithumbsize": "420",
+            "inprop": "url",
+            "format": "json",
+        }
+    )
+    request = Request(
+        f"https://en.wikipedia.org/w/api.php?{params}",
+        headers={"User-Agent": "WannabeStem/0.1 local rehearsal app"},
+    )
+    with urlopen(request, timeout=5) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    pages = payload.get("query", {}).get("pages", {})
+    if not pages:
+        return _offline_song_info(parsed, "No artist/song article was found from the file name.")
+    page = next(iter(pages.values()))
+    extract = _short_extract(str(page.get("extract") or ""))
+    return {
+        "online": True,
+        "source": "Wikipedia",
+        "artist": parsed["artist"],
+        "title": parsed["title"] or str(page.get("title") or parsed["display"]),
+        "heading": str(page.get("title") or parsed["display"] or "Song notes"),
+        "summary": extract or "Found a matching article, but it did not include a short summary.",
+        "url": page.get("fullurl"),
+        "image_url": page.get("thumbnail", {}).get("source"),
+    }
+
+
+def _short_extract(extract: str) -> str:
+    extract = re.sub(r"\s+", " ", extract).strip()
+    if len(extract) <= 420:
+        return extract
+    sentence_match = re.match(r"^(.{180,420}?[.!?])\s", extract)
+    if sentence_match:
+        return sentence_match.group(1)
+    return f"{extract[:417].rstrip()}..."
+
+
+def _offline_song_info(parsed: dict[str, str], summary: str) -> dict:
+    return {
+        "online": False,
+        "source": "Local",
+        "artist": parsed["artist"],
+        "title": parsed["title"],
+        "heading": parsed["display"] or "Song notes",
+        "summary": summary,
+        "url": None,
+        "image_url": None,
+    }
+
+
+def _update_split_stage_estimate(task: SplitTask, settings: Settings) -> None:
+    if "Demucs" not in task.message:
+        if task.stage != "postprocess" and task.progress >= 82:
+            task.stage = "postprocess"
+            task.stage_started_at = time.monotonic()
+            task.estimated_stage_seconds = None
+        return
+
+    if task.stage == "demucs":
+        return
+
+    task.stage = "demucs"
+    task.stage_started_at = time.monotonic()
+    task.estimated_stage_seconds = _estimate_demucs_seconds(settings, task.job_id)
+
+
+def _estimate_demucs_seconds(settings: Settings, job_id: str | None) -> float:
+    if not job_id:
+        return 240.0
+    normalized_path = settings.jobs_dir / job_id / "working" / "normalized.wav"
+    duration = _audio_duration_seconds(normalized_path)
+    if duration <= 0:
+        return 240.0
+
+    # On local Docker CPU runs, htdemucs_6s often lands around 0.7-1.0x song length.
+    # Keep the estimate slightly conservative so the bar does not hit 82% too early.
+    return max(120.0, min(900.0, duration * 0.9 + 45.0))
+
+
+def _audio_duration_seconds(path: Path) -> float:
+    if not path.exists():
+        return 0.0
+    command = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(path),
+    ]
+    try:
+        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        return float(result.stdout.strip() or 0.0)
+    except Exception:
+        return 0.0
 
 
 def _render_hd_mix(job_dir: Path, request: HdMixRequest) -> Path:
@@ -507,15 +662,36 @@ def _get_split_task(task_id: str) -> SplitTask:
 
 
 def _task_payload(task: SplitTask) -> dict:
+    progress, estimated, eta_seconds = _display_split_progress(task)
     return {
         "task_id": task.task_id,
         "job_id": task.job_id,
         "filename": task.filename,
         "state": task.state,
-        "progress": task.progress,
+        "progress": progress,
+        "actual_progress": task.progress,
+        "progress_estimated": estimated,
+        "eta_seconds": eta_seconds,
         "message": task.message,
         "error": task.error,
     }
+
+
+def _display_split_progress(task: SplitTask) -> tuple[int, bool, int | None]:
+    if (
+        task.state != "running"
+        or task.stage != "demucs"
+        or task.stage_started_at is None
+        or not task.estimated_stage_seconds
+    ):
+        return task.progress, False, None
+
+    elapsed = max(0.0, time.monotonic() - task.stage_started_at)
+    stage_ratio = min(0.985, elapsed / max(1.0, task.estimated_stage_seconds))
+    estimated_progress = int(round(35 + stage_ratio * 47))
+    progress = max(task.progress, min(81, estimated_progress))
+    eta = max(0, int(round(task.estimated_stage_seconds - elapsed)))
+    return progress, True, eta
 
 
 def _resolve_job_dir(settings: Settings, job_id: str) -> Path:
