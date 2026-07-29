@@ -5,6 +5,8 @@ services:
       args:
         INSTALL_DEMUCS: ${INSTALL_DEMUCS:-true}
         INSTALL_AUDIO_SEPARATOR: ${INSTALL_AUDIO_SEPARATOR:-true}
+        INSTALL_ACCORDOAI: ${INSTALL_ACCORDOAI:-true}
+        INSTALL_PYMUSICKIT: ${INSTALL_PYMUSICKIT:-true}
     ports:
       - "8000:8000"
     volumes:
@@ -23,6 +25,8 @@ services:
       args:
         INSTALL_DEMUCS: ${INSTALL_DEMUCS:-true}
         INSTALL_AUDIO_SEPARATOR: ${INSTALL_AUDIO_SEPARATOR:-true}
+        INSTALL_ACCORDOAI: ${INSTALL_ACCORDOAI:-true}
+        INSTALL_PYMUSICKIT: ${INSTALL_PYMUSICKIT:-true}
     volumes:
       - ./data:/workspace/data
     environment:
