@@ -1,0 +1,63 @@
+name: Bug report
+description: Tell us about a reproducible problem in Wannabe Stem.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Please do not upload copyrighted songs, stems, or personal information.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Release version, branch, or commit SHA.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: docker_version
+    attributes:
+      label: Docker Desktop version
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where did it happen?
+      options:
+        - Upload or split
+        - Stem playback or sync
+        - Chords, key, or tempo
+        - Mix editing or export
+        - Startup or installation
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: Describe the smallest set of actions that shows the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and log excerpt
+      description: Remove file paths, song names, and personal details before pasting logs.
+    validations:
+      required: true

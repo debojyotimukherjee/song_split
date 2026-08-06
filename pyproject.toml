@@ -1,5 +1,5 @@
 [project]
-name = "weekend-stems"
+name = "wannabe-stem"
 version = "0.1.0"
 description = "Local-first music stem separation pipeline for Wannabe Stem."
 requires-python = ">=3.11"
