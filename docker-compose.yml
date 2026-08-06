@@ -3,7 +3,10 @@ services:
     build:
       context: .
       args:
-        INSTALL_DEMUCS: ${INSTALL_DEMUCS:-false}
+        INSTALL_DEMUCS: ${INSTALL_DEMUCS:-true}
+        INSTALL_AUDIO_SEPARATOR: ${INSTALL_AUDIO_SEPARATOR:-true}
+        INSTALL_ACCORDOAI: ${INSTALL_ACCORDOAI:-true}
+        INSTALL_PYMUSICKIT: ${INSTALL_PYMUSICKIT:-true}
     ports:
       - "8000:8000"
     volumes:
@@ -11,17 +14,26 @@ services:
     environment:
       SONG_SPLIT_DATA_DIR: /workspace/data
       SONG_SPLIT_MODEL_NAME: htdemucs_6s
+      SONG_SPLIT_ENABLE_AUDIO_SEPARATOR: ${SONG_SPLIT_ENABLE_AUDIO_SEPARATOR:-false}
+      SONG_SPLIT_AUDIO_SEPARATOR_MODELS: ${SONG_SPLIT_AUDIO_SEPARATOR_MODELS:-}
+      SONG_SPLIT_AUDIO_SEPARATOR_TIMEOUT_SECONDS: ${SONG_SPLIT_AUDIO_SEPARATOR_TIMEOUT_SECONDS:-900}
       TORCH_HOME: /workspace/data/models/torch
 
   worker:
     build:
       context: .
       args:
-        INSTALL_DEMUCS: ${INSTALL_DEMUCS:-false}
+        INSTALL_DEMUCS: ${INSTALL_DEMUCS:-true}
+        INSTALL_AUDIO_SEPARATOR: ${INSTALL_AUDIO_SEPARATOR:-true}
+        INSTALL_ACCORDOAI: ${INSTALL_ACCORDOAI:-true}
+        INSTALL_PYMUSICKIT: ${INSTALL_PYMUSICKIT:-true}
     volumes:
       - ./data:/workspace/data
     environment:
       SONG_SPLIT_DATA_DIR: /workspace/data
       SONG_SPLIT_MODEL_NAME: htdemucs_6s
+      SONG_SPLIT_ENABLE_AUDIO_SEPARATOR: ${SONG_SPLIT_ENABLE_AUDIO_SEPARATOR:-false}
+      SONG_SPLIT_AUDIO_SEPARATOR_MODELS: ${SONG_SPLIT_AUDIO_SEPARATOR_MODELS:-}
+      SONG_SPLIT_AUDIO_SEPARATOR_TIMEOUT_SECONDS: ${SONG_SPLIT_AUDIO_SEPARATOR_TIMEOUT_SECONDS:-900}
       TORCH_HOME: /workspace/data/models/torch
     entrypoint: ["python", "-m", "app.cli"]

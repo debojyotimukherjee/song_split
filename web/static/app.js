@@ -4,6 +4,7 @@ const TRACK_ORDER = [
   "drums",
   "bass",
   "guitar",
+  "acoustic_guitar",
   "keys",
   "other",
 ];
@@ -14,6 +15,7 @@ const TRACK_LABELS = {
   drums: "Drums",
   bass: "Bass",
   guitar: "Guitar",
+  acoustic_guitar: "Acoustic Guitar",
   keys: "Keys",
   other: "Other",
 };
@@ -24,6 +26,7 @@ const TRACK_INSTRUMENTS = {
   drums: "🥁",
   bass: "🎸",
   guitar: "🎸",
+  acoustic_guitar: "🪕",
   keys: "🎹",
   other: "🎷",
 };
@@ -34,14 +37,20 @@ const EQ_BANDS = [
   { key: "high", label: "High", type: "highshelf", frequency: 6200, q: 0.7 },
 ];
 
+const SIDEBAR_WIDTH_STORAGE_KEY = "wannabeStemSidebarWidth";
+const SIDEBAR_WIDTH_MIN = 260;
+const SIDEBAR_WIDTH_MAX = 520;
+const MIXER_MIN_WIDTH = 720;
+
 const MIX_PRESETS = {
-  main_vocal: { low: -1, mid: 2, high: 1, reverb: 62, compression: 64 },
-  backing_vocal: { low: -2, mid: 1, high: 1, reverb: 66, compression: 58 },
-  drums: { low: 2, mid: 0, high: 2, reverb: 54, compression: 60 },
-  bass: { low: 3, mid: -2, high: 0, reverb: 50, compression: 56 },
-  guitar: { low: -1, mid: 2, high: 2, reverb: 58, compression: 54 },
-  keys: { low: -2, mid: 1, high: 3, reverb: 60, compression: 52 },
-  other: { low: -1, mid: 0, high: 1, reverb: 58, compression: 52 },
+  main_vocal: { volume: 50, low: -1, mid: 2, high: 1, reverb: 62, compression: 64 },
+  backing_vocal: { volume: 50, low: -2, mid: 1, high: 1, reverb: 66, compression: 58 },
+  drums: { volume: 50, low: 2, mid: 0, high: 2, reverb: 54, compression: 60 },
+  bass: { volume: 50, low: 3, mid: -2, high: 0, reverb: 50, compression: 56 },
+  guitar: { volume: 50, low: -1, mid: 2, high: 2, reverb: 58, compression: 54 },
+  acoustic_guitar: { volume: 50, low: 1, mid: 2, high: 3, reverb: 58, compression: 52 },
+  keys: { volume: 50, low: -2, mid: 1, high: 3, reverb: 60, compression: 52 },
+  other: { volume: 50, low: -1, mid: 0, high: 1, reverb: 58, compression: 52 },
 };
 
 const KEY_OPTIONS = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
@@ -76,6 +85,7 @@ const state = {
   chords: [],
   tempo: null,
   detectedKey: null,
+  detectedKeyLabel: null,
   targetKey: null,
   playbackRate: 1,
   audioContext: null,
@@ -99,6 +109,8 @@ const state = {
   splitTaskId: null,
   splitPollTimer: null,
   syncTimer: null,
+  shiftedMixUrl: null,
+  shiftedMixFilename: null,
 };
 
 const els = {
@@ -135,6 +147,8 @@ const els = {
   clearLoopButton: document.querySelector("#clearLoopButton"),
   loopStatus: document.querySelector("#loopStatus"),
   globalLoopStatus: document.querySelector("#globalLoopStatus"),
+  globalShiftedMixButton: document.querySelector("#globalShiftedMixButton"),
+  globalShiftedMixText: document.querySelector("#globalShiftedMixText"),
   practiceMuteList: document.querySelector("#practiceMuteList"),
   countInToggle: document.querySelector("#countInToggle"),
   metronomeToggle: document.querySelector("#metronomeToggle"),
@@ -154,9 +168,17 @@ const els = {
   splitProgressBar: document.querySelector("#splitProgressBar"),
   splitProgressMessage: document.querySelector("#splitProgressMessage"),
   splitProgressValue: document.querySelector("#splitProgressValue"),
+  songInfoPanel: document.querySelector("#songInfoPanel"),
+  songInfoArt: document.querySelector("#songInfoArt"),
+  songInfoSource: document.querySelector("#songInfoSource"),
+  songInfoHeading: document.querySelector("#songInfoHeading"),
+  songInfoSummary: document.querySelector("#songInfoSummary"),
+  songInfoLink: document.querySelector("#songInfoLink"),
+  sidebarResizeHandle: document.querySelector("#sidebarResizeHandle"),
 };
 
 async function init() {
+  restoreSidebarWidth();
   renderKeyOptions();
   bindEvents();
   await loadJobs();
@@ -186,6 +208,7 @@ function bindEvents() {
   els.targetKey.addEventListener("change", () => setTargetKey(els.targetKey.value));
   els.resetKeyButton.addEventListener("click", () => setTargetKey(state.detectedKey || "C"));
   els.renderShiftedButton.addEventListener("click", renderShiftedMix);
+  els.globalShiftedMixButton.addEventListener("click", openShiftedMix);
   els.hdMasterButton.addEventListener("click", toggleHdMaster);
   els.hdExportButton.addEventListener("click", renderHdMix);
   els.saveMixButton.addEventListener("click", saveMixSettings);
@@ -199,6 +222,65 @@ function bindEvents() {
   els.uploadButton.addEventListener("click", () => uploadSelectedFile("none"));
   els.splitButton.addEventListener("click", () => uploadSelectedFile("demucs"));
   els.cancelSplitButton.addEventListener("click", cancelCurrentSplit);
+  els.sidebarResizeHandle?.addEventListener("pointerdown", startSidebarResize);
+  els.sidebarResizeHandle?.addEventListener("keydown", adjustSidebarWidthWithKeyboard);
+  window.addEventListener("resize", () => setSidebarWidth(currentSidebarWidth(), false));
+}
+
+function restoreSidebarWidth() {
+  const savedWidth = Number(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY));
+  setSidebarWidth(Number.isFinite(savedWidth) ? savedWidth : 320, false);
+}
+
+function setSidebarWidth(width, persist) {
+  const maxForViewport = Math.max(SIDEBAR_WIDTH_MIN, Math.min(SIDEBAR_WIDTH_MAX, window.innerWidth - MIXER_MIN_WIDTH));
+  const nextWidth = Math.max(SIDEBAR_WIDTH_MIN, Math.min(maxForViewport, Number(width) || 320));
+  document.documentElement.style.setProperty("--sidebar-width", `${nextWidth}px`);
+  if (els.sidebarResizeHandle) {
+    els.sidebarResizeHandle.setAttribute("aria-valuemax", String(maxForViewport));
+    els.sidebarResizeHandle.setAttribute("aria-valuenow", String(nextWidth));
+    els.sidebarResizeHandle.setAttribute("title", `Left pane ${nextWidth}px`);
+  }
+  if (persist) {
+    window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(nextWidth));
+  }
+}
+
+function currentSidebarWidth() {
+  const value = getComputedStyle(document.documentElement).getPropertyValue("--sidebar-width");
+  return Number.parseInt(value, 10) || 320;
+}
+
+function startSidebarResize(event) {
+  if (!els.sidebarResizeHandle) return;
+  event.preventDefault();
+  document.body.classList.add("sidebar-resizing");
+  els.sidebarResizeHandle.setPointerCapture(event.pointerId);
+
+  const move = (moveEvent) => setSidebarWidth(moveEvent.clientX, true);
+  const stop = () => {
+    document.body.classList.remove("sidebar-resizing");
+    els.sidebarResizeHandle?.removeEventListener("pointermove", move);
+    els.sidebarResizeHandle?.removeEventListener("pointerup", stop);
+    els.sidebarResizeHandle?.removeEventListener("pointercancel", stop);
+  };
+
+  els.sidebarResizeHandle.addEventListener("pointermove", move);
+  els.sidebarResizeHandle.addEventListener("pointerup", stop, { once: true });
+  els.sidebarResizeHandle.addEventListener("pointercancel", stop, { once: true });
+}
+
+function adjustSidebarWidthWithKeyboard(event) {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const step = event.shiftKey ? 40 : 10;
+  if (event.key === "Home") {
+    setSidebarWidth(SIDEBAR_WIDTH_MIN, true);
+  } else if (event.key === "End") {
+    setSidebarWidth(SIDEBAR_WIDTH_MAX, true);
+  } else {
+    setSidebarWidth(currentSidebarWidth() + (event.key === "ArrowRight" ? step : -step), true);
+  }
 }
 
 async function loadJobs() {
@@ -241,6 +323,9 @@ async function selectJob(jobId) {
   state.loopEnd = null;
   state.loopMode = "regular";
   state.practiceMuteTracks = new Set();
+  state.shiftedMixUrl = null;
+  state.shiftedMixFilename = null;
+  updateShiftedMixStatus("idle");
   renderTracks(state.job);
   await loadMixSettings();
   renderEditMix();
@@ -251,6 +336,7 @@ async function loadChords(jobId) {
   state.chords = [];
   state.tempo = null;
   state.detectedKey = null;
+  state.detectedKeyLabel = null;
   state.targetKey = null;
   state.activeChordIndex = -1;
   state.activeBarIndex = -1;
@@ -268,7 +354,8 @@ async function loadChords(jobId) {
     const analysis = await response.json();
     state.tempo = normalizeTempo(analysis.tempo);
     state.chords = analysis.segments || [];
-    state.detectedKey = detectSongKey(state.chords);
+    state.detectedKey = normalizeDetectedKey(analysis.key);
+    state.detectedKeyLabel = normalizeDetectedKeyLabel(analysis.key, state.detectedKey);
     state.targetKey = state.detectedKey;
     updateTempoReadout();
     updateKeyReadout();
@@ -304,7 +391,7 @@ function renderChordTimeline(container, duration, variant) {
     block.type = "button";
     block.dataset.chordIndex = String(index);
     const barLabel = formatBarRange(segment);
-    const chord = transposeChord(segment.chord);
+    const chord = displayChord(segment.chord);
     block.innerHTML = variant === "full"
       ? `<span>${escapeHtml(chord)}</span><small>${barLabel}</small>`
       : escapeHtml(chord);
@@ -323,7 +410,7 @@ function renderBarChart(duration) {
   for (let index = 0; index < barCount; index += 1) {
     const start = index * tempo.secondsPerBar;
     const midpoint = start + tempo.secondsPerBar / 2;
-    const chord = transposeChord(chordAtTime(midpoint)?.chord || chordAtTime(start)?.chord || "N");
+    const chord = displayChord(chordAtTime(midpoint)?.chord || chordAtTime(start)?.chord || "~");
     const item = document.createElement("button");
     item.className = "bar-card";
     item.type = "button";
@@ -403,7 +490,7 @@ function renderTracks(job) {
       <div class="track-controls">
         <button class="track-button mute" type="button">Mute</button>
         <button class="track-button solo" type="button">S</button>
-        <input class="volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="${TRACK_LABELS[name]} volume" />
+        <input class="volume" type="range" min="0" max="2" step="0.01" value="1" aria-label="${TRACK_LABELS[name]} volume" />
       </div>
     `;
 
@@ -438,7 +525,9 @@ function renderTracks(job) {
     });
     row.querySelector(".volume").addEventListener("input", (event) => {
       track.volume = Number(event.target.value);
+      ensureMixSettings(name).volume = gainToVolumeLevel(track.volume);
       applyTrackMix();
+      renderEditMix();
     });
 
     drawWaveform(row.querySelector("canvas"), audio.src, colorForTrack(name));
@@ -713,7 +802,30 @@ function ensureMixSettings(trackName) {
 }
 
 function neutralMixSettings() {
-  return { low: 0, mid: 0, high: 0, reverb: 50, compression: 50 };
+  return { volume: 50, low: 0, mid: 0, high: 0, reverb: 50, compression: 50 };
+}
+
+function normalizeVolumeLevel(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 50;
+  return Math.max(0, Math.min(100, numeric));
+}
+
+function normalizeSavedVolumeLevel(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 50;
+  if (numeric >= 0 && numeric <= 2) return gainToVolumeLevel(numeric);
+  return normalizeVolumeLevel(numeric);
+}
+
+function volumeLevelToGain(level) {
+  return Math.max(0, Math.min(2, normalizeVolumeLevel(level) / 50));
+}
+
+function gainToVolumeLevel(gain) {
+  const numeric = Number(gain);
+  if (!Number.isFinite(numeric)) return 50;
+  return Math.max(0, Math.min(100, numeric * 50));
 }
 
 function applyEqToAllTracks() {
@@ -724,6 +836,9 @@ function applyEqToAllTracks() {
 
 function applyEqToTrack(track) {
   const settings = ensureMixSettings(track.name);
+  settings.volume = normalizeVolumeLevel(settings.volume);
+  track.volume = volumeLevelToGain(settings.volume);
+  track.row.querySelector(".volume").value = String(track.volume);
   if (track.eqNodes) {
     for (const band of EQ_BANDS) {
       track.eqNodes[band.key].gain.value = Number(settings[band.key]) || 0;
@@ -747,17 +862,24 @@ function applyEqToTrack(track) {
 
 function setEqValue(trackName, bandKey, value) {
   const settings = ensureMixSettings(trackName);
-  settings[bandKey] = ["reverb", "compression"].includes(bandKey)
-    ? Math.max(0, Math.min(100, Number(value) || 50))
-    : Math.max(-12, Math.min(12, Number(value) || 0));
+  const numeric = Number(value);
+  const fallback = ["volume", "reverb", "compression"].includes(bandKey) ? 50 : 0;
+  const safeValue = Number.isFinite(numeric) ? numeric : fallback;
+  settings[bandKey] = ["volume", "reverb", "compression"].includes(bandKey)
+    ? Math.max(0, Math.min(100, safeValue))
+    : Math.max(-12, Math.min(12, safeValue));
   const track = state.tracks.get(trackName);
-  if (track) applyEqToTrack(track);
+  if (track) {
+    applyEqToTrack(track);
+    applyTrackMix();
+  }
 }
 
 function resetEq(trackName) {
   state.mixSettings.set(trackName, neutralMixSettings());
   const track = state.tracks.get(trackName);
   if (track) applyEqToTrack(track);
+  applyTrackMix();
   renderEditMix();
 }
 
@@ -765,6 +887,7 @@ function applyPreset(trackName) {
   state.mixSettings.set(trackName, { ...(MIX_PRESETS[trackName] || neutralMixSettings()) });
   const track = state.tracks.get(trackName);
   if (track) applyEqToTrack(track);
+  applyTrackMix();
   renderEditMix();
 }
 
@@ -798,9 +921,10 @@ async function loadMixSettings() {
         ...ensureMixSettings(trackName),
         ...trackSettings,
       });
+      state.mixSettings.get(trackName).volume = normalizeSavedVolumeLevel(trackSettings.volume);
       const track = state.tracks.get(trackName);
       if (track) {
-        track.volume = Number(trackSettings.volume ?? track.volume);
+        track.volume = volumeLevelToGain(state.mixSettings.get(trackName).volume);
         track.muted = Boolean(trackSettings.muted);
         track.solo = Boolean(trackSettings.solo);
         track.row.querySelector(".volume").value = String(track.volume);
@@ -838,9 +962,10 @@ async function saveMixSettings() {
 function serializeMixSettings() {
   const tracks = {};
   for (const track of state.tracks.values()) {
+    const settings = ensureMixSettings(track.name);
+    settings.volume = normalizeVolumeLevel(settings.volume);
     tracks[track.name] = {
-      ...ensureMixSettings(track.name),
-      volume: track.volume,
+      ...settings,
       muted: track.muted,
       solo: track.solo,
     };
@@ -858,13 +983,15 @@ function serializeMixSettings() {
   };
 }
 
-async function renderHdMix() {
+async function renderHdMix(options = {}) {
   if (!state.job) return;
+  const isShiftedRender = Boolean(options.shifted);
   els.hdExportButton.disabled = true;
   els.hdExportButton.textContent = "Rendering...";
   const format = els.exportFormat.value;
   const preset = els.exportPreset.value;
   els.mixStatus.textContent = preset === "stems_zip" ? "Preparing stems ZIP..." : `Rendering ${format.toUpperCase()}...`;
+  if (isShiftedRender) updateShiftedMixStatus("rendering");
   try {
     const response = await fetch(`/api/jobs/${encodeURIComponent(state.job.job_id)}/exports/hd-mix`, {
       method: "POST",
@@ -872,13 +999,19 @@ async function renderHdMix() {
       body: JSON.stringify(buildHdMixPayload()),
     });
     if (!response.ok) {
-      els.mixStatus.textContent = await response.text();
-      return;
+      const errorText = await response.text();
+      els.mixStatus.textContent = errorText;
+      if (isShiftedRender) updateShiftedMixStatus("error", errorText);
+      return null;
     }
     const result = await response.json();
     els.mixStatus.innerHTML = `<a href="${escapeHtml(result.url)}" download>${escapeHtml(result.filename)}</a>`;
+    if (isShiftedRender) updateShiftedMixStatus("ready", result.filename, result.url);
+    return result;
   } catch {
     els.mixStatus.textContent = "HD render failed.";
+    if (isShiftedRender) updateShiftedMixStatus("error", "Shifted mix failed");
+    return null;
   } finally {
     els.hdExportButton.disabled = false;
     els.hdExportButton.textContent = "Render WAV";
@@ -891,7 +1024,7 @@ function buildHdMixPayload() {
   for (const track of state.tracks.values()) {
     const eq = ensureMixSettings(track.name);
     tracks[track.name] = {
-      volume: track.volume,
+      volume: volumeLevelToGain(eq.volume),
       muted: track.muted || (hasSolo && !track.solo),
       low: eq.low,
       mid: eq.mid,
@@ -911,13 +1044,56 @@ function buildHdMixPayload() {
 
 async function renderShiftedMix() {
   if (!state.job) return;
+  if (transposeSemitones() === 0) {
+    updateShiftedMixStatus("error", "Choose a new key");
+    els.audioKeyStatus.textContent = "Choose a different key first, then render the shifted mix.";
+    return;
+  }
   const previousPreset = els.exportPreset.value;
   const previousFormat = els.exportFormat.value;
   els.exportPreset.value = "full";
   els.exportFormat.value = "wav";
-  await renderHdMix();
+  await renderHdMix({ shifted: true });
   els.exportPreset.value = previousPreset;
   els.exportFormat.value = previousFormat;
+}
+
+function updateShiftedMixStatus(status, filename = null, url = null) {
+  if (!els.globalShiftedMixButton || !els.globalShiftedMixText) return;
+  els.globalShiftedMixButton.classList.remove("rendering", "ready", "error");
+  if (status === "rendering") {
+    state.shiftedMixUrl = null;
+    state.shiftedMixFilename = null;
+    els.globalShiftedMixButton.disabled = true;
+    els.globalShiftedMixButton.classList.add("rendering");
+    els.globalShiftedMixText.textContent = "Rendering shifted mix";
+    return;
+  }
+  if (status === "ready") {
+    state.shiftedMixUrl = url;
+    state.shiftedMixFilename = filename;
+    els.globalShiftedMixButton.disabled = false;
+    els.globalShiftedMixButton.classList.add("ready");
+    els.globalShiftedMixText.textContent = filename || "Shifted mix ready";
+    return;
+  }
+  if (status === "error") {
+    state.shiftedMixUrl = null;
+    state.shiftedMixFilename = null;
+    els.globalShiftedMixButton.disabled = true;
+    els.globalShiftedMixButton.classList.add("error");
+    els.globalShiftedMixText.textContent = filename || "Shifted mix failed";
+    return;
+  }
+  state.shiftedMixUrl = null;
+  state.shiftedMixFilename = null;
+  els.globalShiftedMixButton.disabled = true;
+  els.globalShiftedMixText.textContent = "No shifted mix";
+}
+
+function openShiftedMix() {
+  if (!state.shiftedMixUrl) return;
+  window.open(state.shiftedMixUrl, "_blank", "noopener");
 }
 
 function renderEditMix() {
@@ -943,6 +1119,11 @@ function renderEditMix() {
         <strong>${TRACK_LABELS[name]}</strong>
       </div>
       <div class="eq-bank">
+        <label class="eq-control volume-control">
+          <span>Vol</span>
+          <input type="range" min="0" max="100" step="1" value="${settings.volume ?? 50}" data-track="${name}" data-band="volume" />
+          <strong>${formatPercent(settings.volume ?? 50)}</strong>
+        </label>
         ${EQ_BANDS.map((band) => `
           <label class="eq-control">
             <span>${band.label}</span>
@@ -973,7 +1154,7 @@ function renderEditMix() {
   els.editMixDeck.querySelectorAll("[data-track][data-band]").forEach((slider) => {
     slider.addEventListener("input", (event) => {
       setEqValue(event.target.dataset.track, event.target.dataset.band, event.target.value);
-      const valueText = ["reverb", "compression"].includes(event.target.dataset.band)
+      const valueText = ["volume", "reverb", "compression"].includes(event.target.dataset.band)
         ? formatPercent(event.target.value)
         : formatDb(event.target.value);
       event.target.closest(".eq-control")?.querySelector("strong").replaceChildren(valueText);
@@ -1200,7 +1381,7 @@ function updateChordHighlight(time, forceScroll) {
   const activeSegment = state.chords[activeIndex];
   const activeBarIndex = barForTime(time) - 1;
 
-  els.currentChord.textContent = activeSegment ? transposeChord(activeSegment.chord) : "--";
+  els.currentChord.textContent = activeSegment ? displayChord(activeSegment.chord) : "--";
   els.chordViewBar.textContent = formatBar(time);
 
   document.querySelectorAll("[data-chord-index]").forEach((node) => {
@@ -1285,6 +1466,7 @@ function renderKeyOptions() {
 }
 
 function setTargetKey(key) {
+  if (!state.detectedKey) return;
   state.targetKey = KEY_OPTIONS.includes(key) ? key : state.detectedKey;
   updateKeyReadout();
   updateAudioKeyStatus();
@@ -1293,34 +1475,33 @@ function setTargetKey(key) {
 
 function updateKeyReadout() {
   const detected = state.detectedKey || "--";
+  const detectedLabel = state.detectedKeyLabel || detected;
   const target = state.targetKey || state.detectedKey || "C";
   const semitones = transposeSemitones();
-  els.detectedKey.textContent = detected;
+  els.detectedKey.textContent = detectedLabel;
   els.targetKey.value = KEY_OPTIONS.includes(target) ? target : "C";
+  els.targetKey.disabled = !state.detectedKey;
+  els.resetKeyButton.disabled = !state.detectedKey;
+  els.renderShiftedButton.disabled = !state.detectedKey;
+  if (!state.detectedKey) {
+    els.transposeSummary.textContent = "Song key is not available for this song.";
+    return;
+  }
   els.transposeSummary.textContent = semitones === 0
-    ? `Showing original key: ${detected}`
-    : `Showing ${target}, transposed ${formatSemitones(semitones)} from ${detected}`;
+    ? `Showing original key: ${detectedLabel}`
+    : `Showing ${target}, transposed ${formatSemitones(semitones)} from ${detectedLabel}`;
 }
 
 function updateAudioKeyStatus() {
   if (!els.audioKeyStatus) return;
+  if (!state.detectedKey) {
+    els.audioKeyStatus.textContent = "Audio key shifting is disabled until an original song key is set manually.";
+    return;
+  }
   const semitones = transposeSemitones();
   els.audioKeyStatus.textContent = semitones === 0
     ? "Tracks are playing in the original recorded key."
     : `Chart is transposed ${formatSemitones(semitones)}; audio is still original until shifted tracks are rendered.`;
-}
-
-function detectSongKey(chords) {
-  const scores = new Array(12).fill(0);
-  for (const segment of chords) {
-    const parsed = parseChord(segment.chord);
-    if (!parsed) continue;
-    const duration = Math.max(0.25, (segment.end || 0) - (segment.start || 0));
-    scores[parsed.pc] += duration;
-    scores[(parsed.pc + (parsed.minor ? 3 : 9)) % 12] += duration * 0.25;
-  }
-  const best = scores.reduce((bestIndex, score, index) => score > scores[bestIndex] ? index : bestIndex, 0);
-  return KEY_OPTIONS[best];
 }
 
 function transposeChord(chord) {
@@ -1330,7 +1511,26 @@ function transposeChord(chord) {
   return `${root}${parsed.suffix}`;
 }
 
+function displayChord(chord) {
+  const normalized = String(chord || "").trim();
+  if (!normalized || normalized === "N") return "~";
+  return transposeChord(normalized);
+}
+
+function normalizeDetectedKey(key) {
+  if (!key) return null;
+  if (typeof key === "string") return NOTE_TO_PC[key] == null ? null : key;
+  const tonic = key.tonic;
+  return NOTE_TO_PC[tonic] == null ? null : tonic;
+}
+
+function normalizeDetectedKeyLabel(key, fallback) {
+  if (!key || typeof key === "string") return fallback;
+  return key.label || fallback;
+}
+
 function transposeSemitones() {
+  if (!state.detectedKey) return 0;
   const from = NOTE_TO_PC[state.detectedKey] ?? 0;
   const to = NOTE_TO_PC[state.targetKey || state.detectedKey] ?? from;
   return ((to - from + 18) % 12) - 6;
@@ -1385,6 +1585,8 @@ async function uploadSelectedFile(engine) {
     : "Uploading song...";
   try {
     if (engine === "demucs") {
+      showSongInfoLoading(file.name);
+      loadSongInfo(file.name);
       const response = await fetch("/api/splits", { method: "POST", body: form });
       if (!response.ok) {
         els.jobMeta.textContent = await response.text();
@@ -1413,7 +1615,7 @@ async function uploadSelectedFile(engine) {
 async function deleteSelectedSong() {
   if (!state.job) return;
   const songName = state.job.input?.filename || state.job.job_id;
-  if (!window.confirm(`Remove "${songName}" from Weekend Stems?`)) return;
+  if (!window.confirm(`Remove "${songName}" from Wannabe Stem?`)) return;
 
   pauseAll();
   els.deleteSongButton.disabled = true;
@@ -1443,7 +1645,10 @@ function setUploadBusy(isBusy, showProgress) {
   els.splitButton.textContent = isBusy ? "Working..." : "Split Tracks";
   els.splitProgressPanel.hidden = !showProgress;
   els.cancelSplitButton.disabled = !isBusy;
-  if (!showProgress) updateSplitProgress({ progress: 0, message: "Preparing song..." });
+  if (!showProgress) {
+    updateSplitProgress({ progress: 0, message: "Preparing song..." });
+    clearSongInfo();
+  }
 }
 
 async function pollSplitProgress() {
@@ -1498,8 +1703,82 @@ function clearSplitPollTimer() {
 function updateSplitProgress(task) {
   const progress = Math.max(0, Math.min(100, Number(task.progress) || 0));
   els.splitProgressBar.value = progress;
-  els.splitProgressValue.textContent = `${Math.round(progress)}%`;
-  els.splitProgressMessage.textContent = task.message || "Working...";
+  els.splitProgressValue.textContent = task.progress_estimated
+    ? `~${Math.round(progress)}%`
+    : `${Math.round(progress)}%`;
+  const eta = Number(task.eta_seconds);
+  const etaText = task.progress_estimated && Number.isFinite(eta) && eta > 0
+    ? ` About ${formatEta(eta)} left.`
+    : "";
+  els.splitProgressMessage.textContent = `${task.message || "Working..."}${etaText}`;
+}
+
+function showSongInfoLoading(filename) {
+  if (!els.songInfoPanel) return;
+  els.songInfoPanel.hidden = false;
+  els.songInfoSource.textContent = "Song notes";
+  els.songInfoHeading.textContent = cleanSongInfoHeading(filename);
+  els.songInfoSummary.textContent = "Looking up artist and song notes while Wannabe Stem works on the split.";
+  els.songInfoLink.hidden = true;
+  els.songInfoLink.removeAttribute("href");
+  els.songInfoArt.classList.remove("has-image");
+  els.songInfoArt.style.backgroundImage = "";
+}
+
+async function loadSongInfo(filename) {
+  if (!els.songInfoPanel) return;
+  try {
+    const response = await fetch(`/api/song-info?filename=${encodeURIComponent(filename)}`);
+    if (!response.ok) return;
+    const info = await response.json();
+    renderSongInfo(info);
+  } catch {
+    renderSongInfo({
+      source: "Local",
+      heading: cleanSongInfoHeading(filename),
+      summary: "Internet lookup is unavailable right now, but the split is still running normally.",
+    });
+  }
+}
+
+function renderSongInfo(info) {
+  if (!els.songInfoPanel) return;
+  els.songInfoPanel.hidden = false;
+  els.songInfoSource.textContent = info.source || "Song notes";
+  els.songInfoHeading.textContent = info.heading || info.title || "Song notes";
+  els.songInfoSummary.textContent = info.summary || "No short song notes found yet.";
+  if (info.url) {
+    els.songInfoLink.hidden = false;
+    els.songInfoLink.href = info.url;
+  } else {
+    els.songInfoLink.hidden = true;
+    els.songInfoLink.removeAttribute("href");
+  }
+  if (info.image_url) {
+    els.songInfoArt.classList.add("has-image");
+    els.songInfoArt.style.backgroundImage = `linear-gradient(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.24)), url("${info.image_url}")`;
+  } else {
+    els.songInfoArt.classList.remove("has-image");
+    els.songInfoArt.style.backgroundImage = "";
+  }
+}
+
+function clearSongInfo() {
+  if (!els.songInfoPanel) return;
+  els.songInfoPanel.hidden = true;
+}
+
+function cleanSongInfoHeading(filename) {
+  return (filename || "Selected song")
+    .replace(/\.[a-z0-9]+$/i, "")
+    .replace(/[_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatEta(seconds) {
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return minutes === 1 ? "1 minute" : `${minutes} minutes`;
 }
 
 async function drawWaveform(canvas, url, color) {
@@ -1558,6 +1837,7 @@ function colorForTrack(name) {
     drums: "#e00024",
     bass: "#ffb000",
     guitar: "#ff5a1f",
+    acoustic_guitar: "#ff8a3d",
     keys: "#c81dff",
     other: "#ffcf5a",
   };
